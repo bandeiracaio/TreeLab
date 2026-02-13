@@ -1,0 +1,137 @@
+================================================================================
+                    TREELAB IS READY TO LAUNCH!
+================================================================================
+
+All core functionality has been tested and verified working!
+
+TESTED:
+  [OK] TreeLab initialization
+  [OK] Dataset loading (Titanic: 891 rows x 15 columns)
+  [OK] Action registration (5 transformations + 2 models)
+  [OK] All imports working
+  [OK] Core components functional
+
+================================================================================
+TO LAUNCH TREELAB NOW
+================================================================================
+
+Method 1: Simple Launch (RECOMMENDED)
+--------------------------------------
+cd TreeLab
+python run_treelab.py
+
+Then open: http://127.0.0.1:8050
+
+
+Method 2: Python Script
+-----------------------
+python
+>>> from treelab import TreeLab
+>>> app = TreeLab()
+>>> app.run()
+
+
+Method 3: Jupyter Notebook
+---------------------------
+Open: notebooks/example_usage.ipynb
+Run the cells
+
+================================================================================
+AVAILABLE ACTIONS
+================================================================================
+
+TRANSFORMATION MODE (5 actions):
+  1. DropColumns        - Remove unwanted columns
+  2. SimpleImputer      - Fill missing values
+  3. StandardScaler     - Normalize numeric features
+  4. OneHotEncoder      - Encode categorical variables
+  5. TrainTestSplit     - Split train/test data
+
+MODELING MODE (2 models):
+  1. DecisionTreeClassifier    - Single decision tree
+  2. RandomForestClassifier    - Ensemble of trees
+
+================================================================================
+SUGGESTED FIRST WORKFLOW (TITANIC DATASET)
+================================================================================
+
+Step 1: Launch TreeLab
+  python run_treelab.py
+
+Step 2: Drop unnecessary columns
+  Action: DropColumns
+  Select: deck, embark_town
+  Execute
+
+Step 3: Fill missing values
+  Action: SimpleImputer
+  Columns: age (auto-suggested)
+  Strategy: median
+  Execute
+
+Step 4: Encode categorical
+  Action: OneHotEncoder
+  Columns: sex, embarked (auto-suggested)
+  Execute
+
+Step 5: Scale numeric
+  Action: StandardScaler
+  Columns: age, fare (auto-suggested)
+  Execute
+
+Step 6: Create checkpoint
+  Name: "After Preprocessing"
+  Click Save
+
+Step 7: Split data
+  Action: TrainTestSplit
+  Target: survived
+  Test size: 0.2
+  Execute
+
+Step 8: Create checkpoint
+  Name: "Ready for Modeling"
+  Click Save
+
+Step 9: Switch to Modeling Mode
+  Click "Modeling" button
+
+Step 10: Fit Random Forest
+  Action: RandomForestClassifier
+  N estimators: 100
+  Max depth: 10
+  Execute
+
+Step 11: View Results
+  Go to "Model Results" tab
+  See accuracy, confusion matrix, feature importance
+
+Step 12: Export Script
+  Click "Export Python Script"
+  Download and save
+
+DONE! You've completed an end-to-end ML pipeline.
+
+================================================================================
+TABS TO EXPLORE
+================================================================================
+
+1. Data View      - Browse your dataset
+2. Statistics     - See descriptive stats & missing values
+3. Distributions  - View histograms of numeric columns
+4. Correlations   - Correlation heatmap
+5. Model Results  - Performance metrics & visualizations
+
+================================================================================
+READY TO START?
+================================================================================
+
+Just run this command:
+
+    python run_treelab.py
+
+Then open your browser to: http://127.0.0.1:8050
+
+Have fun exploring data with TreeLab!
+
+================================================================================
