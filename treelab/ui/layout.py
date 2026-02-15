@@ -5,6 +5,7 @@ from dash import dcc, html, dash_table
 import dash_bootstrap_components as dbc
 from treelab.core.state_manager import StateManager
 from treelab.core.logger import SessionLogger
+from treelab.core.action_registry import ActionRegistry
 
 
 def create_app(state_manager: StateManager, logger: SessionLogger):
@@ -61,10 +62,10 @@ def create_layout():
                 ]
             ),
             # Hidden components for state management
+            dcc.Location(id="url", refresh=False),
             dcc.Store(id="current-mode", data="transformation"),
             dcc.Store(id="action-params", data={}),
             dcc.Store(id="refresh-trigger", data=0),
-            dcc.Store(id="theme-mode", data="light"),
             dcc.Dropdown(
                 id="dist-column-selector",
                 options=[],
@@ -162,21 +163,6 @@ def create_header():
                                     ),
                                 ]
                             ),
-                            html.Label(
-                                "Theme:",
-                                style={
-                                    "fontWeight": "bold",
-                                    "marginLeft": "20px",
-                                    "marginRight": "10px",
-                                    "fontSize": "12px",
-                                },
-                            ),
-                            dbc.Button(
-                                "🌙 Dark",
-                                id="theme-toggle",
-                                color="secondary",
-                                size="sm",
-                            ),
                         ],
                         style={"textAlign": "right", "marginTop": "20px"},
                     ),
@@ -189,20 +175,24 @@ def create_header():
 
 def create_action_panel():
     """Create the action selection panel."""
+
+    def get_action_options(mode: str):
+        options = []
+        for name in ActionRegistry.get_action_names(mode):
+            try:
+                action_class = ActionRegistry.get_action_class(name)
+                description = getattr(action_class, "description", "")
+            except Exception:
+                description = ""
+            label = f"{name} — {description}" if description else name
+            options.append({"label": label, "value": name})
+        return options
+
     return dbc.Card(
         [
             dbc.CardHeader(html.H5("Actions")),
             dbc.CardBody(
                 [
-                    # Action search
-                    html.Label("Search Actions:", style={"fontWeight": "bold"}),
-                    dcc.Input(
-                        id="action-search",
-                        placeholder="Type to search...",
-                        type="text",
-                        debounce=True,
-                    ),
-                    html.Br(),
                     # Action dropdown
                     html.Label("Select Action:", style={"fontWeight": "bold"}),
                     dcc.Dropdown(
@@ -210,6 +200,7 @@ def create_action_panel():
                         placeholder="Choose an action...",
                         clearable=False,
                         searchable=True,
+                        options=get_action_options("transformation"),
                     ),
                     html.Br(),
                     # Dynamic parameter form area
@@ -304,18 +295,8 @@ def create_history_panel():
                         size="sm",
                         className="w-100",
                     ),
-                    html.Br(),
-                    dbc.Button(
-                        "[ML] Export Model (joblib)",
-                        id="export-model-btn",
-                        color="success",
-                        size="sm",
-                        className="w-100",
-                        disabled=True,
-                    ),
                     dcc.Download(id="download-script"),
                     dcc.Download(id="download-bq-script"),
-                    dcc.Download(id="download-model"),
                 ]
             ),
         ]

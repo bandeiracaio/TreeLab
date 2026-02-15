@@ -28,7 +28,7 @@ def register_callbacks(app):
             options.append({"label": label, "value": name})
         return options
 
-    def build_tree_figure(model, feature_names, max_depth=3):
+    def build_tree_figure(model, feature_names, max_depth=3, y_train=None):
         if model is None:
             return None
 
@@ -42,6 +42,32 @@ def register_callbacks(app):
             return None
 
         tree = tree_model.tree_
+
+        total_samples = tree.n_node_samples[0]
+        has_target = y_train is not None and len(y_train) > 0
+
+        target_per_node = {}
+        if has_target:
+            try:
+                classes = tree_model.classes_
+                values = tree.value
+
+                for node_id in range(tree.node_count):
+                    node_values = values[node_id][0]
+                    if len(classes) == 2:
+                        if classes[0] == 0:
+                            count = int(node_values[1])
+                        else:
+                            count = int(node_values[0])
+                        total = int(tree.n_node_samples[node_id])
+                        pct = (count / total * 100) if total > 0 else 0
+                        target_per_node[node_id] = {
+                            "count": count,
+                            "total": total,
+                            "pct": pct,
+                        }
+            except Exception:
+                pass
 
         def layout(node_id, depth):
             left = tree.children_left[node_id]
@@ -111,15 +137,23 @@ def register_callbacks(app):
             node_y.append(y)
 
             samples = int(tree.n_node_samples[node_id])
+            pop_pct = (samples / total_samples) * 100
             size = 18 + (samples / max_samples) * 18
             node_sizes.append(size)
 
             depth = int(abs(y))
             node_colors.append(palette[depth % len(palette)])
 
+            target_info = ""
+            target_label = ""
+            if node_id in target_per_node:
+                t = target_per_node[node_id]
+                target_info = f"\nTarget: {t['count']}/{t['total']} ({t['pct']:.1f}%)"
+                target_label = f" | {t['pct']:.0f}%"
+
             if tree.feature[node_id] == -2:
-                label = "leaf"
-                hover = f"Leaf\nSamples: {samples}"
+                label = f"leaf |{target_label}\n{pop_pct:.1f}% pop"
+                hover = f"Leaf\nSamples: {samples} ({pop_pct:.1f}%){target_info}"
             else:
                 feature_idx = tree.feature[node_id]
                 feature_name = (
@@ -128,8 +162,10 @@ def register_callbacks(app):
                     else f"X{feature_idx}"
                 )
                 threshold = tree.threshold[node_id]
-                label = f"{feature_name} <= {threshold:.2f}"
-                hover = f"{feature_name} <= {threshold:.4f}\nSamples: {samples}"
+                label = (
+                    f"{feature_name}<={threshold:.2f}\n{pop_pct:.1f}% pop{target_label}"
+                )
+                hover = f"{feature_name} <= {threshold:.4f}\nSamples: {samples} ({pop_pct:.1f}%){target_info}"
 
             node_text.append(label)
             hover_text.append(hover)
@@ -183,17 +219,20 @@ def register_callbacks(app):
             Output("mode-indicator", "style"),
         ],
         [
+            Input("url", "pathname"),
             Input("mode-transform", "n_clicks"),
             Input("mode-model", "n_clicks"),
             Input("refresh-trigger", "data"),
         ],
         [State("current-mode", "data")],
     )
-    def switch_mode(transform_clicks, model_clicks, refresh_trigger, current_mode):
+    def switch_mode(
+        pathname, transform_clicks, model_clicks, refresh_trigger, current_mode
+    ):
         """Handle mode switching between transformation and modeling."""
         ctx = callback_context
 
-        if not ctx.triggered:
+        if not ctx.triggered or ctx.triggered[0]["prop_id"].startswith("url"):
             # Initial load - transformation mode
             actions = get_action_options("transformation")
             mode_style = {
@@ -291,30 +330,6 @@ def register_callbacks(app):
                 "TRANSFORMATION",
                 mode_style,
             )
-
-    @app.callback(
-        Output("action-selector", "options"),
-        [Input("action-search", "value"), Input("current-mode", "data")],
-    )
-    def filter_actions(search_term, mode):
-        """Filter actions based on search term."""
-        if not search_term:
-            search_term = ""
-
-        search_term = search_term.lower()
-
-        # Get all actions for current mode
-        all_actions = get_action_options(mode)
-
-        # Filter by search term
-        filtered = [
-            opt
-            for opt in all_actions
-            if search_term in opt["label"].lower()
-            or search_term in opt["value"].lower()
-        ]
-
-        return filtered if filtered else all_actions
 
     @app.callback(
         [
@@ -584,46 +599,6 @@ def register_callbacks(app):
         filename = f"treelab_bigquery_{timestamp}.sql"
 
         return dict(content=script, filename=filename)
-
-    @app.callback(
-        Output("download-model", "data"),
-        [Input("export-model-btn", "n_clicks")],
-        [State("current-mode", "data")],
-    )
-    def export_model(n_clicks, mode):
-        """Export fitted model."""
-        if not n_clicks or not app.state_manager.current_model:
-            return None
-
-        import joblib
-        import io
-
-        model = app.state_manager.current_model
-        metadata = app.state_manager.model_metadata
-
-        # Create a dictionary with model and metadata
-        model_data = {
-            "model": model,
-            "metadata": metadata,
-        }
-
-        # Save to bytes
-        buffer = io.BytesIO()
-        joblib.dump(model_data, buffer)
-        buffer.seek(0)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"treelab_model_{timestamp}.joblib"
-
-        return dict(content=buffer.read(), filename=filename)
-
-    @app.callback(
-        Output("export-model-btn", "disabled"),
-        [Input("refresh-trigger", "data")],
-    )
-    def update_model_export_button(trigger):
-        """Enable/disable model export button based on whether a model is fitted."""
-        return app.state_manager.current_model is None
 
     @app.callback(
         Output("tabs", "active_tab"),
@@ -1156,14 +1131,17 @@ def register_callbacks(app):
             )
 
         feature_names = []
+        y_train = None
         if app.state_manager.train_df is not None:
             target = metadata.get("target_column")
             feature_names = [
                 col for col in app.state_manager.train_df.columns if col != target
             ]
+            if target and target in app.state_manager.train_df.columns:
+                y_train = app.state_manager.train_df[target].values
 
         tree_fig = build_tree_figure(
-            app.state_manager.current_model, feature_names, max_depth=3
+            app.state_manager.current_model, feature_names, max_depth=3, y_train=y_train
         )
         tree_block = (
             html.Div([html.H6("Tree Visualization"), dcc.Graph(figure=tree_fig)])
@@ -1367,7 +1345,6 @@ def register_callbacks(app):
                 ]
             )
 
-        # Check if we have at least 2 models
         if len(fitted_models) < 2:
             return html.Div(
                 [
@@ -1379,66 +1356,35 @@ def register_callbacks(app):
                 ]
             )
 
-        # Determine if models are same type or different types
         model_types = [m.get("action_name", "") for m in fitted_models]
         all_same_type = len(set(model_types)) == 1
 
-        # Build comparison table
-        comparison_data = []
-        for i, model_info in enumerate(fitted_models):
-            metadata = model_info.get("metadata", {})
-            task = metadata.get("task", "classification")
+        model_names = [
+            m.get("name", f"Model {i + 1}") for i, m in enumerate(fitted_models)
+        ]
 
-            row = {
-                "#": i + 1,
-                "Name": model_info.get("name", f"Model {i + 1}"),
-                "Type": model_info.get("action_name", "Unknown"),
-            }
+        first_metadata = fitted_models[0].get("metadata", {})
+        task = first_metadata.get("task", "classification")
 
+        best_idx = 0
+        best_score = 0
+        for i, m in enumerate(fitted_models):
+            meta = m.get("metadata", {})
             if task == "classification":
-                row["Test Accuracy"] = f"{metadata.get('test_accuracy', 0):.4f}"
-                row["Precision"] = f"{metadata.get('test_precision', 0):.4f}"
-                row["Recall"] = f"{metadata.get('test_recall', 0):.4f}"
-                row["F1"] = f"{metadata.get('test_f1', 0):.4f}"
-            else:  # regression
-                row["Test R2"] = f"{metadata.get('test_r2', 0):.4f}"
-                row["MAE"] = f"{metadata.get('test_mae', 0):.4f}"
-                row["RMSE"] = f"{metadata.get('test_rmse', 0):.4f}"
+                score = meta.get("test_accuracy", 0)
+            else:
+                score = meta.get("test_r2", 0)
+            if score > best_score:
+                best_score = score
+                best_idx = i
 
-            comparison_data.append(row)
-
-        comparison_df = pd.DataFrame(comparison_data)
-
-        # Create bar chart for comparison
-        fig_compare = None
-        if fitted_models:
-            model_names = [
-                m.get("name", f"Model {i + 1}") for i, m in enumerate(fitted_models)
-            ]
-
-            # Get primary metric for each model
-            primary_metrics = []
-            for model_info in fitted_models:
-                metadata = model_info.get("metadata", {})
-                task = metadata.get("task", "classification")
-                if task == "classification":
-                    primary_metrics.append(metadata.get("test_accuracy", 0))
-                else:
-                    primary_metrics.append(metadata.get("test_r2", 0))
-
-            fig_compare = px.bar(
-                x=model_names,
-                y=primary_metrics,
-                title="Model Performance Comparison",
-                labels={"x": "Model", "y": "Primary Metric"},
-                color=primary_metrics,
-                color_continuous_scale="Viridis",
-            )
-            fig_compare.update_layout(plot_bgcolor="white", showlegend=False)
-
-        # Build response
         response = [
-            html.H5(f"Model Comparison ({len(fitted_models)} models)"),
+            html.H4(f"Model Comparison ({len(fitted_models)} models)"),
+            dbc.Alert(
+                f"🏆 Winner: {model_names[best_idx]} (Best {task.capitalize()} Performance: {best_score:.2%})",
+                color="success",
+                className="mb-3",
+            ),
             html.P(
                 f"Comparing {'same model type' if all_same_type else 'different model types'}.",
                 className="text-muted",
@@ -1446,22 +1392,190 @@ def register_callbacks(app):
             html.Hr(),
         ]
 
-        # Add performance chart
-        response.append(
-            dbc.Row(
-                [
-                    dbc.Col(
-                        [
-                            html.H6("Performance Chart"),
-                            dcc.Graph(figure=fig_compare)
-                            if fig_compare is not None
-                            else html.Div(),
-                        ],
-                        width=12,
-                    ),
-                ]
+        if task == "classification":
+            metrics = ["test_accuracy", "test_precision", "test_recall", "test_f1"]
+            metric_labels = ["Accuracy", "Precision", "Recall", "F1-Score"]
+
+            radar_data = []
+            for i, model_info in enumerate(fitted_models):
+                metadata = model_info.get("metadata", {})
+                for j, (metric, label) in enumerate(zip(metrics, metric_labels)):
+                    radar_data.append(
+                        {
+                            "Model": model_names[i],
+                            "Metric": label,
+                            "Value": metadata.get(metric, 0) * 100,
+                        }
+                    )
+
+            radar_df = pd.DataFrame(radar_data)
+            fig_radar = px.line_polar(
+                radar_df,
+                r="Value",
+                theta="Metric",
+                color="Model",
+                line_close=True,
+                title="Multi-Metric Comparison (Radar Chart)",
+                range_r=[0, 100],
             )
-        )
+            fig_radar.update_traces(fill="toself")
+            fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True)))
+
+            response.append(
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [html.H6("Performance Radar"), dcc.Graph(figure=fig_radar)],
+                            width=6,
+                        ),
+                        dbc.Col(
+                            [
+                                html.H6("Metrics Summary"),
+                                dbc.Table(
+                                    [
+                                        html.Thead(
+                                            [
+                                                html.Tr(
+                                                    [
+                                                        html.Th("Model"),
+                                                        html.Th("Acc"),
+                                                        html.Th("Prec"),
+                                                        html.Th("Rec"),
+                                                        html.Th("F1"),
+                                                    ]
+                                                )
+                                            ]
+                                        ),
+                                        html.Tbody(
+                                            [
+                                                html.Tr(
+                                                    [
+                                                        html.Td(
+                                                            f"{'⭐ ' if i == best_idx else ''}{model_names[i]}"
+                                                        ),
+                                                        html.Td(
+                                                            f"{m.get('metadata', {}).get('test_accuracy', 0):.2%}"
+                                                        ),
+                                                        html.Td(
+                                                            f"{m.get('metadata', {}).get('test_precision', 0):.2%}"
+                                                        ),
+                                                        html.Td(
+                                                            f"{m.get('metadata', {}).get('test_recall', 0):.2%}"
+                                                        ),
+                                                        html.Td(
+                                                            f"{m.get('metadata', {}).get('test_f1', 0):.2%}"
+                                                        ),
+                                                    ]
+                                                )
+                                                for i, m in enumerate(fitted_models)
+                                            ]
+                                        ),
+                                    ],
+                                    striped=True,
+                                    bordered=True,
+                                    hover=True,
+                                    size="sm",
+                                ),
+                            ],
+                            width=6,
+                        ),
+                    ]
+                )
+            )
+        else:
+            metrics = ["test_r2", "test_mae", "test_rmse"]
+            metric_labels = ["R²", "MAE", "RMSE"]
+
+            radar_data = []
+            for i, model_info in enumerate(fitted_models):
+                metadata = model_info.get("metadata", {})
+                for j, (metric, label) in enumerate(zip(metrics, metric_labels)):
+                    val = metadata.get(metric, 0)
+                    if metric == "test_mae" or metric == "test_rmse":
+                        radar_data.append(
+                            {"Model": model_names[i], "Metric": label, "Value": -val}
+                        )
+                    else:
+                        radar_data.append(
+                            {
+                                "Model": model_names[i],
+                                "Metric": label,
+                                "Value": val * 100,
+                            }
+                        )
+
+            radar_df = pd.DataFrame(radar_data)
+            fig_radar = px.line_polar(
+                radar_df,
+                r="Value",
+                theta="Metric",
+                color="Model",
+                line_close=True,
+                title="Regression Metrics Comparison",
+            )
+            fig_radar.update_traces(fill="toself")
+
+            response.append(
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [html.H6("Performance Radar"), dcc.Graph(figure=fig_radar)],
+                            width=6,
+                        ),
+                        dbc.Col(
+                            [
+                                html.H6("Metrics Summary"),
+                                dbc.Table(
+                                    [
+                                        html.Thead(
+                                            [
+                                                html.Tr(
+                                                    [
+                                                        html.Th("Model"),
+                                                        html.Th("R²"),
+                                                        html.Th("MAE"),
+                                                        html.Th("RMSE"),
+                                                    ]
+                                                )
+                                            ]
+                                        ),
+                                        html.Tbody(
+                                            [
+                                                html.Tr(
+                                                    [
+                                                        html.Td(
+                                                            f"{'⭐ ' if i == best_idx else ''}{model_names[i]}"
+                                                        ),
+                                                        html.Td(
+                                                            f"{m.get('metadata', {}).get('test_r2', 0):.4f}"
+                                                        ),
+                                                        html.Td(
+                                                            f"{m.get('metadata', {}).get('test_mae', 0):.4f}"
+                                                        ),
+                                                        html.Td(
+                                                            f"{m.get('metadata', {}).get('test_rmse', 0):.4f}"
+                                                        ),
+                                                    ]
+                                                )
+                                                for i, m in enumerate(fitted_models)
+                                            ]
+                                        ),
+                                    ],
+                                    striped=True,
+                                    bordered=True,
+                                    hover=True,
+                                    size="sm",
+                                ),
+                            ],
+                            width=6,
+                        ),
+                    ]
+                )
+            )
+
+        response.append(html.Hr())
+
+        # Add performance chart
         response.append(html.Hr())
 
         # Model-agnostic info (works for any model type)
@@ -1629,10 +1743,12 @@ def register_callbacks(app):
         checkpoints = app.state_manager.get_checkpoints()
 
         if not history:
-            return html.Div([
-                html.H5("History Tree"),
-                html.P("No actions executed yet.", className="text-muted"),
-            ])
+            return html.Div(
+                [
+                    html.H5("History Tree"),
+                    html.P("No actions executed yet.", className="text-muted"),
+                ]
+            )
 
         history_items = []
         for i, record in enumerate(history):
@@ -1641,36 +1757,79 @@ def register_callbacks(app):
                 if cp_idx == i:
                     checkpoint = cp_name
                     break
-            
-            param_str = ", ".join([f"{k}={v}" for k, v in list(record.params.items())[:3]])
+
+            param_str = ", ".join(
+                [f"{k}={v}" for k, v in list(record.params.items())[:3]]
+            )
             if len(record.params) > 3:
                 param_str += "..."
-                
-            history_items.append({
-                "step": i + 1,
-                "action": record.action_name,
-                "params": param_str,
-                "time": record.timestamp.strftime("%H:%M:%S"),
-                "checkpoint": checkpoint,
-            })
+
+            history_items.append(
+                {
+                    "step": i + 1,
+                    "action": record.action_name,
+                    "params": param_str,
+                    "time": record.timestamp.strftime("%H:%M:%S"),
+                    "checkpoint": checkpoint,
+                }
+            )
 
         history_df = pd.DataFrame(history_items)
-        
-        return html.Div([
-            html.H5("History Tree"),
-            html.P("Visual representation of your data transformation pipeline.", className="text-muted"),
-            html.Hr(),
-            html.H6("Summary Statistics"),
-            dbc.Row([
-                dbc.Col(dbc.Card(dbc.CardBody([html.H4(len(history)), html.P("Total Actions")])))),
-                dbc.Col(dbc.Card(dbc.CardBody([html.H4(len(checkpoints)), html.P("Checkpoints")])))),
-                dbc.Col(dbc.Card(dbc.CardBody([html.H4(app.state_manager.df.shape[1]), html.P("Current Columns")]))),
-                dbc.Col(dbc.Card(dbc.CardBody([html.H4(app.state_manager.df.shape[0]), html.P("Current Rows")])))),
-            ]),
-            html.Hr(),
-            html.H6("Action History"),
-            dbc.Table.from_dataframe(history_df, striped=True, bordered=True, hover=True),
-        ])
+
+        return html.Div(
+            [
+                html.H5("History Tree"),
+                html.P(
+                    "Visual representation of your data transformation pipeline.",
+                    className="text-muted",
+                ),
+                html.Hr(),
+                html.H6("Summary Statistics"),
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            dbc.Card(
+                                dbc.CardBody(
+                                    [html.H4(len(history)), html.P("Total Actions")]
+                                )
+                            )
+                        ),
+                        dbc.Col(
+                            dbc.Card(
+                                dbc.CardBody(
+                                    [html.H4(len(checkpoints)), html.P("Checkpoints")]
+                                )
+                            )
+                        ),
+                        dbc.Col(
+                            dbc.Card(
+                                dbc.CardBody(
+                                    [
+                                        html.H4(app.state_manager.df.shape[1]),
+                                        html.P("Current Columns"),
+                                    ]
+                                )
+                            )
+                        ),
+                        dbc.Col(
+                            dbc.Card(
+                                dbc.CardBody(
+                                    [
+                                        html.H4(app.state_manager.df.shape[0]),
+                                        html.P("Current Rows"),
+                                    ]
+                                )
+                            )
+                        ),
+                    ]
+                ),
+                html.Hr(),
+                html.H6("Action History"),
+                dbc.Table.from_dataframe(
+                    history_df, striped=True, bordered=True, hover=True
+                ),
+            ]
+        )
 
     def render_help_tab():
         """Render help documentation tab."""
@@ -2042,18 +2201,3 @@ def register_callbacks(app):
             ],
             style={"padding": "20px"},
         )
-
-    @app.callback(
-        [Output("theme-mode", "data"), Output("theme-toggle", "children")],
-        [Input("theme-toggle", "n_clicks")],
-        [State("theme-mode", "data")],
-    )
-    def toggle_theme(n_clicks, current_theme):
-        """Toggle between light and dark mode."""
-        if not n_clicks:
-            return "light", "🌙 Dark"
-
-        new_theme = "dark" if current_theme == "light" else "light"
-        button_text = "☀️ Light" if new_theme == "dark" else "🌙 Dark"
-
-        return new_theme, button_text

@@ -282,27 +282,78 @@ class PolynomialFeaturesAction(Action):
         transformed = poly.fit_transform(df[columns])
         feature_names = poly.get_feature_names_out(columns).tolist()
 
-        df_new = df.copy()
         if drop_original:
-            df_new = df_new.drop(columns=columns)
-        df_new[feature_names] = transformed
+            cols_to_keep = [col for col in df.columns if col not in columns]
+            df_new = pd.concat(
+                [
+                    df[cols_to_keep].reset_index(drop=True),
+                    pd.DataFrame(transformed, columns=feature_names, index=df.index),
+                ],
+                axis=1,
+            )
+        else:
+            df_new = pd.concat(
+                [
+                    df.reset_index(drop=True),
+                    pd.DataFrame(transformed, columns=feature_names, index=df.index),
+                ],
+                axis=1,
+            )
 
         train_new = None
         test_new = None
 
         if train_df is not None:
-            train_new = train_df.copy()
             train_transformed = poly.transform(train_df[columns])
             if drop_original:
-                train_new = train_new.drop(columns=columns)
-            train_new[feature_names] = train_transformed
+                train_cols = [col for col in train_df.columns if col not in columns]
+                train_new = pd.concat(
+                    [
+                        train_df[train_cols].reset_index(drop=True),
+                        pd.DataFrame(
+                            train_transformed,
+                            columns=feature_names,
+                            index=train_df.index,
+                        ),
+                    ],
+                    axis=1,
+                )
+            else:
+                train_new = pd.concat(
+                    [
+                        train_df.reset_index(drop=True),
+                        pd.DataFrame(
+                            train_transformed,
+                            columns=feature_names,
+                            index=train_df.index,
+                        ),
+                    ],
+                    axis=1,
+                )
 
         if test_df is not None:
-            test_new = test_df.copy()
             test_transformed = poly.transform(test_df[columns])
             if drop_original:
-                test_new = test_new.drop(columns=columns)
-            test_new[feature_names] = test_transformed
+                test_cols = [col for col in test_df.columns if col not in columns]
+                test_new = pd.concat(
+                    [
+                        test_df[test_cols].reset_index(drop=True),
+                        pd.DataFrame(
+                            test_transformed, columns=feature_names, index=test_df.index
+                        ),
+                    ],
+                    axis=1,
+                )
+            else:
+                test_new = pd.concat(
+                    [
+                        test_df.reset_index(drop=True),
+                        pd.DataFrame(
+                            test_transformed, columns=feature_names, index=test_df.index
+                        ),
+                    ],
+                    axis=1,
+                )
 
         return {
             "df": df_new,
