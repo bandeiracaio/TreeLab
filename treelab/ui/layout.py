@@ -64,6 +64,7 @@ def create_layout():
             dcc.Store(id="current-mode", data="transformation"),
             dcc.Store(id="action-params", data={}),
             dcc.Store(id="refresh-trigger", data=0),
+            dcc.Store(id="theme-mode", data="light"),
             dcc.Dropdown(
                 id="dist-column-selector",
                 options=[],
@@ -97,7 +98,7 @@ def create_header():
                         },
                     ),
                 ],
-                width=3,
+                width=2,
                 style={"paddingTop": "5px"},
             ),
             dbc.Col(
@@ -161,11 +162,26 @@ def create_header():
                                     ),
                                 ]
                             ),
+                            html.Label(
+                                "Theme:",
+                                style={
+                                    "fontWeight": "bold",
+                                    "marginLeft": "20px",
+                                    "marginRight": "10px",
+                                    "fontSize": "12px",
+                                },
+                            ),
+                            dbc.Button(
+                                "🌙 Dark",
+                                id="theme-toggle",
+                                color="secondary",
+                                size="sm",
+                            ),
                         ],
                         style={"textAlign": "right", "marginTop": "20px"},
                     ),
                 ],
-                width=9,
+                width=10,
             ),
         ]
     )
@@ -178,12 +194,22 @@ def create_action_panel():
             dbc.CardHeader(html.H5("Actions")),
             dbc.CardBody(
                 [
+                    # Action search
+                    html.Label("Search Actions:", style={"fontWeight": "bold"}),
+                    dcc.Input(
+                        id="action-search",
+                        placeholder="Type to search...",
+                        type="text",
+                        debounce=True,
+                    ),
+                    html.Br(),
                     # Action dropdown
                     html.Label("Select Action:", style={"fontWeight": "bold"}),
                     dcc.Dropdown(
                         id="action-selector",
                         placeholder="Choose an action...",
                         clearable=False,
+                        searchable=True,
                     ),
                     html.Br(),
                     # Dynamic parameter form area
@@ -262,7 +288,7 @@ def create_history_panel():
                         },
                     ),
                     html.Hr(),
-                    # Export button
+                    # Export buttons
                     dbc.Button(
                         "[>>] Export Python Script",
                         id="export-script-btn",
@@ -270,7 +296,26 @@ def create_history_panel():
                         size="sm",
                         className="w-100",
                     ),
+                    html.Br(),
+                    dbc.Button(
+                        "[SQL] Export BigQuery SQL",
+                        id="export-bq-btn",
+                        color="info",
+                        size="sm",
+                        className="w-100",
+                    ),
+                    html.Br(),
+                    dbc.Button(
+                        "[ML] Export Model (joblib)",
+                        id="export-model-btn",
+                        color="success",
+                        size="sm",
+                        className="w-100",
+                        disabled=True,
+                    ),
                     dcc.Download(id="download-script"),
+                    dcc.Download(id="download-bq-script"),
+                    dcc.Download(id="download-model"),
                 ]
             ),
         ]
@@ -299,6 +344,10 @@ def create_tabs_panel():
                             tab_id="tab-compare",
                             disabled=True,
                             id="tab-compare-link",
+                        ),
+                        dbc.Tab(
+                            label="[TREE] History Tree",
+                            tab_id="tab-history",
                         ),
                         dbc.Tab(label="[HELP] Help", tab_id="tab-help"),
                     ],

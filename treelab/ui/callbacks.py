@@ -293,6 +293,30 @@ def register_callbacks(app):
             )
 
     @app.callback(
+        Output("action-selector", "options"),
+        [Input("action-search", "value"), Input("current-mode", "data")],
+    )
+    def filter_actions(search_term, mode):
+        """Filter actions based on search term."""
+        if not search_term:
+            search_term = ""
+
+        search_term = search_term.lower()
+
+        # Get all actions for current mode
+        all_actions = get_action_options(mode)
+
+        # Filter by search term
+        filtered = [
+            opt
+            for opt in all_actions
+            if search_term in opt["label"].lower()
+            or search_term in opt["value"].lower()
+        ]
+
+        return filtered if filtered else all_actions
+
+    @app.callback(
         [
             Output("action-params-form", "children"),
             Output("execute-button", "disabled"),
@@ -548,6 +572,60 @@ def register_callbacks(app):
         return dict(content=script, filename=filename)
 
     @app.callback(
+        Output("download-bq-script", "data"), [Input("export-bq-btn", "n_clicks")]
+    )
+    def export_bigquery_script(n_clicks):
+        """Export BigQuery SQL script."""
+        if not n_clicks:
+            return None
+
+        script = app.session_logger.generate_bigquery_script()
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"treelab_bigquery_{timestamp}.sql"
+
+        return dict(content=script, filename=filename)
+
+    @app.callback(
+        Output("download-model", "data"),
+        [Input("export-model-btn", "n_clicks")],
+        [State("current-mode", "data")],
+    )
+    def export_model(n_clicks, mode):
+        """Export fitted model."""
+        if not n_clicks or not app.state_manager.current_model:
+            return None
+
+        import joblib
+        import io
+
+        model = app.state_manager.current_model
+        metadata = app.state_manager.model_metadata
+
+        # Create a dictionary with model and metadata
+        model_data = {
+            "model": model,
+            "metadata": metadata,
+        }
+
+        # Save to bytes
+        buffer = io.BytesIO()
+        joblib.dump(model_data, buffer)
+        buffer.seek(0)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"treelab_model_{timestamp}.joblib"
+
+        return dict(content=buffer.read(), filename=filename)
+
+    @app.callback(
+        Output("export-model-btn", "disabled"),
+        [Input("refresh-trigger", "data")],
+    )
+    def update_model_export_button(trigger):
+        """Enable/disable model export button based on whether a model is fitted."""
+        return app.state_manager.current_model is None
+
+    @app.callback(
         Output("tabs", "active_tab"),
         [Input({"type": "col-dist-btn", "column": ALL}, "n_clicks")],
         [State({"type": "col-dist-btn", "column": ALL}, "id")],
@@ -588,6 +666,8 @@ def register_callbacks(app):
                 return render_model_results_tab()
             elif active_tab == "tab-compare":
                 return render_model_comparison_tab()
+            elif active_tab == "tab-history":
+                return render_history_tree_tab()
             elif active_tab == "tab-help":
                 return render_help_tab()
             else:
@@ -1543,6 +1623,55 @@ def register_callbacks(app):
 
         return html.Div(response)
 
+    def render_history_tree_tab():
+        """Render history tree visualization tab."""
+        history = app.state_manager.get_history()
+        checkpoints = app.state_manager.get_checkpoints()
+
+        if not history:
+            return html.Div([
+                html.H5("History Tree"),
+                html.P("No actions executed yet.", className="text-muted"),
+            ])
+
+        history_items = []
+        for i, record in enumerate(history):
+            checkpoint = None
+            for cp_name, cp_idx in checkpoints.items():
+                if cp_idx == i:
+                    checkpoint = cp_name
+                    break
+            
+            param_str = ", ".join([f"{k}={v}" for k, v in list(record.params.items())[:3]])
+            if len(record.params) > 3:
+                param_str += "..."
+                
+            history_items.append({
+                "step": i + 1,
+                "action": record.action_name,
+                "params": param_str,
+                "time": record.timestamp.strftime("%H:%M:%S"),
+                "checkpoint": checkpoint,
+            })
+
+        history_df = pd.DataFrame(history_items)
+        
+        return html.Div([
+            html.H5("History Tree"),
+            html.P("Visual representation of your data transformation pipeline.", className="text-muted"),
+            html.Hr(),
+            html.H6("Summary Statistics"),
+            dbc.Row([
+                dbc.Col(dbc.Card(dbc.CardBody([html.H4(len(history)), html.P("Total Actions")])))),
+                dbc.Col(dbc.Card(dbc.CardBody([html.H4(len(checkpoints)), html.P("Checkpoints")])))),
+                dbc.Col(dbc.Card(dbc.CardBody([html.H4(app.state_manager.df.shape[1]), html.P("Current Columns")]))),
+                dbc.Col(dbc.Card(dbc.CardBody([html.H4(app.state_manager.df.shape[0]), html.P("Current Rows")])))),
+            ]),
+            html.Hr(),
+            html.H6("Action History"),
+            dbc.Table.from_dataframe(history_df, striped=True, bordered=True, hover=True),
+        ])
+
     def render_help_tab():
         """Render help documentation tab."""
         return html.Div(
@@ -1913,3 +2042,18 @@ def register_callbacks(app):
             ],
             style={"padding": "20px"},
         )
+
+    @app.callback(
+        [Output("theme-mode", "data"), Output("theme-toggle", "children")],
+        [Input("theme-toggle", "n_clicks")],
+        [State("theme-mode", "data")],
+    )
+    def toggle_theme(n_clicks, current_theme):
+        """Toggle between light and dark mode."""
+        if not n_clicks:
+            return "light", "🌙 Dark"
+
+        new_theme = "dark" if current_theme == "light" else "light"
+        button_text = "☀️ Light" if new_theme == "dark" else "🌙 Dark"
+
+        return new_theme, button_text

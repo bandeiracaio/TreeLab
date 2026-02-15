@@ -154,3 +154,101 @@ print("\\n=== Script Execution Complete ===")
         except Exception as e:
             print(f"Error saving script: {e}")
             return False
+
+    def generate_bigquery_script(
+        self,
+        project_id: str = "your-project",
+        dataset: str = "your_dataset",
+        table: str = "input_table",
+    ) -> str:
+        """
+        Generate a BigQuery SQL script from the session history.
+
+        Args:
+            project_id: GCP project ID
+            dataset: BigQuery dataset name
+            table: Input table name
+
+        Returns:
+            String containing the BigQuery SQL script
+        """
+        lines = []
+
+        # Header
+        lines.append(f"-- TreeLab BigQuery SQL Script")
+        lines.append(f"-- Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append(f"-- Project: {project_id}")
+        lines.append(f"-- Dataset: {dataset}")
+        lines.append(f"-- Total Actions: {len(self.state_manager.history)}")
+        lines.append("")
+
+        # Use statements
+        lines.append(f"USE `{project_id}.{dataset}`;")
+        lines.append("")
+
+        # For BigQuery, we'll generate a CTE chain
+        # Each transformation adds to the CTE chain
+        cte_statements = []
+
+        for idx, record in enumerate(self.state_manager.history):
+            try:
+                action_class = ActionRegistry.get_action_class(record.action_name)
+                action_instance = action_class()
+
+                # Get the SQL for this action
+                sql = action_instance.to_bigquery_sql(record.params, table)
+                action_name = record.action_name
+
+                cte_statements.append(f"-- Action {idx + 1}: {action_name}")
+                cte_statements.append(sql)
+                cte_statements.append("")
+
+            except Exception as e:
+                cte_statements.append(
+                    f"-- Action {idx + 1}: {record.action_name} (Error: {e})"
+                )
+                cte_statements.append("")
+
+        # Build final query with CTEs
+        if cte_statements:
+            lines.append("-- Transformation steps as CTEs")
+            lines.append("WITH")
+            for i, stmt in enumerate(cte_statements[:-1]):  # Skip last empty one
+                if stmt.startswith("--"):
+                    lines.append(f"step_{i + 1} AS (")
+                else:
+                    lines.append(f"    {stmt}")
+            lines.append("")
+            lines.append("-- Final result")
+            lines.append(
+                "SELECT * FROM step_"
+                + str(len([s for s in cte_statements if s.startswith("-- Action")]))
+            )
+
+        return "\n".join(lines)
+
+    def save_bigquery_script(
+        self,
+        filepath: str,
+        project_id: str = "your-project",
+        dataset: str = "your_dataset",
+    ) -> bool:
+        """
+        Save the generated BigQuery SQL script to a file.
+
+        Args:
+            filepath: Path where to save the script
+            project_id: GCP project ID
+            dataset: BigQuery dataset name
+
+        Returns:
+            True if successful
+        """
+        try:
+            script = self.generate_bigquery_script(project_id, dataset)
+            with open(filepath, "w") as f:
+                f.write(script)
+            return True
+        except Exception as e:
+            print(f"Error saving BigQuery script: {e}")
+            return False

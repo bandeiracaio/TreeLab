@@ -127,5 +127,20 @@ class Action(ABC):
         """
         pass
 
+    def to_bigquery_sql(
+        self, params: Dict[str, Any], table_name: str = "input_table"
+    ) -> str:
+        """
+        Generate BigQuery SQL for this action.
+
+        Args:
+            params: Dictionary of parameter values
+            table_name: Name of the input table in SQL
+
+        Returns:
+            String containing BigQuery SQL
+        """
+        return f"-- Action {self.name} not supported in BigQuery SQL\nSELECT * FROM {table_name}"
+
     def __repr__(self):
         return f"{self.__class__.__name__}()"

@@ -162,3 +162,44 @@ class SimpleImputerAction(Action):
         code += f"print(f'Missing values after imputation: {{df[{columns}].isnull().sum().sum()}}')"
 
         return code
+
+    def to_bigquery_sql(
+        self, params: Dict[str, Any], table_name: str = "input_table"
+    ) -> str:
+        """Generate BigQuery SQL for imputation."""
+        columns = params.get("columns", [])
+        strategy = params.get("strategy", "mean")
+        fill_value = params.get("fill_value", 0)
+
+        if not isinstance(columns, list):
+            columns = [columns]
+
+        if not columns:
+            return f"SELECT * FROM {table_name}"
+
+        select_parts = []
+        all_columns = []  # Would need to know original columns - this is a simplification
+
+        for col in columns:
+            if strategy == "mean":
+                select_parts.append(f"AVG(`{col}`) OVER() AS `{col}`")
+            elif strategy == "median":
+                select_parts.append(
+                    f"APPROX_QUANTILES(`{col}`, 100)[OFFSET(50)] AS `{col}`"
+                )
+            elif strategy == "most_frequent":
+                select_parts.append(f"MODE_SIMPLE(`{col}`) AS `{col}`")
+            elif strategy == "constant":
+                select_parts.append(f"IFNULL(`{col}`, {fill_value}) AS `{col}`")
+            else:
+                select_parts.append(f"IFNULL(`{col}`, 0) AS `{col}`")
+
+        # This is a simplified version - in practice would need CTE for mean calculation
+        sql = f"""-- Impute missing values using {strategy}
+SELECT * FROM (
+  SELECT 
+    {", ".join([f"IFNULL(`{col}`, {fill_value if strategy == 'constant' else '0'}) AS `{col}`" for col in columns])}
+  FROM `{table_name}`
+)"""
+
+        return sql

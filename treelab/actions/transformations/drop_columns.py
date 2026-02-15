@@ -114,3 +114,20 @@ class DropColumnsAction(Action):
         code += f"print(f'New shape: {{df.shape}}')"
 
         return code
+
+    def to_bigquery_sql(
+        self, params: Dict[str, Any], table_name: str = "input_table"
+    ) -> str:
+        """Generate BigQuery SQL for dropping columns."""
+        columns = params.get("columns", [])
+
+        if not isinstance(columns, list):
+            columns = [columns]
+
+        if not columns:
+            return f"SELECT * FROM {table_name}"
+
+        cols_to_select = [f"`{col}`" for col in columns]
+        sql = f"SELECT {', '.join(cols_to_select)}\nFROM `{table_name}`"
+
+        return sql
