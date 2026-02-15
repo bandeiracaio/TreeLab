@@ -138,7 +138,13 @@ class TreeLab:
         print(
             f"Dataset: {self.state_manager.df.shape[0]} rows x {self.state_manager.df.shape[1]} columns"
         )
-        print(f"Open your browser to: http://{host}:{port}")
+        print(f"\nConnection URLs (try these in your browser):")
+        print(f"  - http://127.0.0.1:{port}  (localhost)")
+        print(f"  - http://localhost:{port}      (hostname)")
+        print(f"  - http://0.0.0.0:{port}      (all interfaces)")
+        print(f"\nIf running in Jupyter/JupyterHub, use the correct host:")
+        print(f"  - Check your JupyterHub proxy URL")
+        print(f"  - Some systems require host='0.0.0.0' instead of '127.0.0.1'")
         print(f"{'=' * 60}\n")
 
         app.run(host=host, port=port, debug=debug)

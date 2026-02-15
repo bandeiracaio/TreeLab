@@ -1287,6 +1287,22 @@ def register_callbacks(app):
                 ]
             )
 
+        # Check if we have at least 2 models
+        if len(fitted_models) < 2:
+            return html.Div(
+                [
+                    html.H5("Model Comparison"),
+                    html.P(
+                        "Fit at least 2 models to compare them.",
+                        className="text-muted",
+                    ),
+                ]
+            )
+
+        # Determine if models are same type or different types
+        model_types = [m.get("action_name", "") for m in fitted_models]
+        all_same_type = len(set(model_types)) == 1
+
         # Build comparison table
         comparison_data = []
         for i, model_info in enumerate(fitted_models):
@@ -1340,71 +1356,192 @@ def register_callbacks(app):
             )
             fig_compare.update_layout(plot_bgcolor="white", showlegend=False)
 
-        return html.Div(
-            [
-                html.H5(f"Model Comparison ({len(fitted_models)} models)"),
-                html.P(
-                    "Compare performance metrics across all fitted models.",
-                    className="text-muted",
-                ),
-                html.Hr(),
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            [
-                                html.H6("Performance Chart"),
-                                dcc.Graph(figure=fig_compare)
-                                if fig_compare is not None
-                                else html.Div(),
-                            ],
-                            width=12,
-                        ),
-                    ]
-                ),
-                html.Hr(),
-                html.H6("Metrics Table"),
-                dbc.Table.from_dataframe(
-                    comparison_df, striped=True, bordered=True, hover=True
-                ),
-                html.Hr(),
-                html.H6("Model Details"),
-                html.Div(
-                    [
-                        dbc.Accordion(
-                            [
-                                dbc.AccordionItem(
-                                    title=f"{m.get('name', f'Model {i + 1}')} - {m.get('action_name', '')}",
-                                    children=[
-                                        html.Div(
-                                            [
-                                                html.Strong("Parameters: "),
-                                                html.Span(str(m.get("params", {}))),
-                                            ]
-                                        ),
-                                        html.Div(
-                                            [
-                                                html.Strong("Target: "),
-                                                html.Span(
-                                                    str(
-                                                        m.get("metadata", {}).get(
-                                                            "target_column", "N/A"
-                                                        )
-                                                    )
-                                                ),
-                                            ],
-                                            style={"marginTop": "5px"},
-                                        ),
-                                    ],
-                                )
-                                for i, m in enumerate(fitted_models)
-                            ],
-                            always_open=True,
-                        )
-                    ],
-                    style={"marginTop": "10px"},
-                ),
-            ]
+        # Build response
+        response = [
+            html.H5(f"Model Comparison ({len(fitted_models)} models)"),
+            html.P(
+                f"Comparing {'same model type' if all_same_type else 'different model types'}.",
+                className="text-muted",
+            ),
+            html.Hr(),
+        ]
+
+        # Add performance chart
+        response.append(
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            html.H6("Performance Chart"),
+                            dcc.Graph(figure=fig_compare)
+                            if fig_compare is not None
+                            else html.Div(),
+                        ],
+                        width=12,
+                    ),
+                ]
+            )
         )
+        response.append(html.Hr())
+
+        # Model-agnostic info (works for any model type)
+        response.append(html.H6("Common Metrics"))
+
+        common_metrics_data = []
+        for i, model_info in enumerate(fitted_models):
+            metadata = model_info.get("metadata", {})
+            task = metadata.get("task", "classification")
+            params = model_info.get("params", {})
+
+            row = {
+                "#": i + 1,
+                "Name": model_info.get("name", f"Model {i + 1}"),
+                "Task": task.capitalize(),
+                "Target": metadata.get("target_column", "N/A"),
+            }
+
+            # Add task-specific primary metric
+            if task == "classification":
+                row["Primary Metric"] = f"{metadata.get('test_accuracy', 0):.4f}"
+            else:
+                row["Primary Metric"] = f"{metadata.get('test_r2', 0):.4f}"
+
+            common_metrics_data.append(row)
+
+        common_df = pd.DataFrame(common_metrics_data)
+        response.append(
+            dbc.Table.from_dataframe(common_df, striped=True, bordered=True, hover=True)
+        )
+        response.append(html.Hr())
+
+        # Parameter comparison (only for same model types)
+        if all_same_type:
+            response.append(html.H6("Parameter Comparison"))
+
+            # Build parameter comparison table
+            all_params = set()
+            for m in fitted_models:
+                params = m.get("params", {})
+                # Filter out non-model params
+                model_params = {
+                    k: v
+                    for k, v in params.items()
+                    if k
+                    not in ["model_name", "target_column", "test_size", "random_state"]
+                }
+                all_params.update(model_params.keys())
+
+            param_comparison = []
+            for i, model_info in enumerate(fitted_models):
+                params = model_info.get("params", {})
+                row = {"Model": model_info.get("name", f"Model {i + 1}")}
+                for param in all_params:
+                    row[param] = str(params.get(param, "-"))
+                param_comparison.append(row)
+
+            param_df = pd.DataFrame(param_comparison)
+            if not param_df.empty:
+                response.append(
+                    dbc.Table.from_dataframe(
+                        param_df, striped=True, bordered=True, hover=True
+                    )
+                )
+            else:
+                response.append(
+                    html.P("No model parameters to compare.", className="text-muted")
+                )
+
+            # Highlight differences
+            response.append(html.Hr())
+            response.append(html.H6("Parameter Differences"))
+
+            differences = []
+            for param in all_params:
+                values = [m.get("params", {}).get(param, "-") for m in fitted_models]
+                if len(set(values)) > 1:  # Different values
+                    differences.append(
+                        {
+                            "Parameter": param,
+                            "Model 1": str(values[0]) if len(values) > 0 else "-",
+                            "Model 2": str(values[1]) if len(values) > 1 else "-",
+                            "Difference": "Yes",
+                        }
+                    )
+
+            if differences:
+                diff_df = pd.DataFrame(differences)
+                response.append(
+                    dbc.Table.from_dataframe(
+                        diff_df,
+                        striped=True,
+                        bordered=True,
+                        hover=True,
+                        color="warning",
+                    )
+                )
+            else:
+                response.append(
+                    html.P("All parameters are identical.", className="text-muted")
+                )
+        else:
+            # Different model types - show detailed params for each
+            response.append(html.H6("Model-Specific Parameters"))
+            response.append(
+                dbc.Accordion(
+                    [
+                        dbc.AccordionItem(
+                            title=f"{m.get('name', f'Model {i + 1}')} - {m.get('action_name', '')}",
+                            children=[
+                                html.Div(
+                                    [
+                                        html.Strong("Parameters: "),
+                                        html.Span(str(m.get("params", {}))),
+                                    ]
+                                ),
+                            ],
+                        )
+                        for i, m in enumerate(fitted_models)
+                    ],
+                    always_open=True,
+                )
+            )
+
+        response.append(html.Hr())
+        response.append(html.H6("Full Model Details"))
+        response.append(
+            dbc.Accordion(
+                [
+                    dbc.AccordionItem(
+                        title=f"{m.get('name', f'Model {i + 1}')} - {m.get('action_name', '')}",
+                        children=[
+                            html.Div(
+                                [
+                                    html.Strong("Parameters: "),
+                                    html.Span(str(m.get("params", {}))),
+                                ]
+                            ),
+                            html.Div(
+                                [
+                                    html.Strong("Target: "),
+                                    html.Span(
+                                        str(
+                                            m.get("metadata", {}).get(
+                                                "target_column", "N/A"
+                                            )
+                                        )
+                                    ),
+                                ],
+                                style={"marginTop": "5px"},
+                            ),
+                        ],
+                    )
+                    for i, m in enumerate(fitted_models)
+                ],
+                always_open=True,
+            )
+        )
+
+        return html.Div(response)
 
     def render_help_tab():
         """Render help documentation tab."""
