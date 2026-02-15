@@ -189,7 +189,7 @@ def create_action_panel():
                     # Dynamic parameter form area
                     html.Div(id="action-params-form"),
                     html.Br(),
-                    # Execute button
+                    # Execute button with loading state
                     dbc.Button(
                         "Execute Action",
                         id="execute-button",
@@ -197,6 +197,15 @@ def create_action_panel():
                         className="w-100",
                         size="lg",
                         disabled=True,
+                    ),
+                    html.Div(
+                        dbc.Spinner(size="sm", color="primary"),
+                        id="action-spinner",
+                        style={
+                            "display": "none",
+                            "marginTop": "10px",
+                            "textAlign": "center",
+                        },
                     ),
                     # Status message
                     html.Div(id="action-status", style={"marginTop": "10px"}),
@@ -284,6 +293,12 @@ def create_tabs_panel():
                             tab_id="tab-model",
                             disabled=True,
                             id="tab-model-link",
+                        ),
+                        dbc.Tab(
+                            label="[COMPARE] Model Comparison",
+                            tab_id="tab-compare",
+                            disabled=True,
+                            id="tab-compare-link",
                         ),
                         dbc.Tab(label="[HELP] Help", tab_id="tab-help"),
                     ],

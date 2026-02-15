@@ -10,6 +10,8 @@ from sklearn.tree import (
 from sklearn.ensemble import (
     RandomForestClassifier as SKRandomForestClassifier,
     RandomForestRegressor as SKRandomForestRegressor,
+    GradientBoostingClassifier as SKGradientBoostingClassifier,
+    ExtraTreesClassifier as SKExtraTreesClassifier,
 )
 from sklearn.metrics import (
     accuracy_score,
@@ -749,5 +751,349 @@ class RandomForestRegressorAction(Action):
         code += "print(f'Test R2: {r2_score(y_test, y_pred):.4f}')\n"
         code += "print(f'Test MAE: {mean_absolute_error(y_test, y_pred):.4f}')\n"
         code += "print(f'Test RMSE: {mean_squared_error(y_test, y_pred, squared=False):.4f}')"
+
+        return code
+
+
+class GradientBoostingClassifierAction(Action):
+    """Fit a Gradient Boosting Classifier."""
+
+    name = "GradientBoostingClassifier"
+    description = "Gradient boosting trees for classification"
+    mode = "modeling"
+
+    def get_parameters(self) -> List[Parameter]:
+        return [
+            Parameter(
+                name="n_estimators",
+                label="Number of Trees",
+                type="numeric",
+                required=False,
+                default=200,
+                description="Number of boosting stages",
+            ),
+            Parameter(
+                name="learning_rate",
+                label="Learning Rate",
+                type="numeric",
+                required=False,
+                default=0.1,
+                description="Learning rate shrinks contribution of each tree",
+            ),
+            Parameter(
+                name="max_depth",
+                label="Maximum Depth",
+                type="numeric",
+                required=False,
+                default=3,
+                description="Max depth of individual trees",
+            ),
+        ]
+
+    def validate(
+        self,
+        df: pd.DataFrame,
+        params: Dict[str, Any],
+        train_df: Optional[pd.DataFrame] = None,
+        test_df: Optional[pd.DataFrame] = None,
+    ) -> Tuple[bool, str]:
+        if train_df is None or test_df is None:
+            return False, "Must perform train/test split before fitting a model"
+
+        n_estimators = params.get("n_estimators", 200)
+        if n_estimators < 1:
+            return False, "n_estimators must be >= 1"
+
+        learning_rate = params.get("learning_rate", 0.1)
+        if learning_rate <= 0:
+            return False, "learning_rate must be > 0"
+
+        return True, ""
+
+    def execute(
+        self,
+        df: pd.DataFrame,
+        params: Dict[str, Any],
+        train_df: Optional[pd.DataFrame] = None,
+        test_df: Optional[pd.DataFrame] = None,
+    ) -> Dict[str, Any]:
+        if train_df is None or test_df is None:
+            raise ValueError("Train/test split must be completed before modeling")
+
+        n_estimators = int(params.get("n_estimators", 200))
+        learning_rate = float(params.get("learning_rate", 0.1))
+        max_depth = int(params.get("max_depth", 3))
+
+        target_col = cast(Hashable, train_df.columns[-1])
+
+        X_train = train_df.drop(columns=[target_col])
+        y_train = train_df[target_col]
+        X_test = test_df.drop(columns=[target_col])
+        y_test = test_df[target_col]
+
+        model = SKGradientBoostingClassifier(
+            n_estimators=n_estimators,
+            learning_rate=learning_rate,
+            max_depth=max_depth,
+            random_state=42,
+        )
+
+        model.fit(X_train, y_train)
+
+        y_pred_train = model.predict(X_train)
+        y_pred_test = model.predict(X_test)
+
+        train_accuracy = accuracy_score(y_train, y_pred_train)
+        test_accuracy = accuracy_score(y_test, y_pred_test)
+
+        average_param = "binary" if len(np.unique(y_train)) == 2 else "weighted"
+
+        test_precision = precision_score(
+            y_test,
+            y_pred_test,
+            average=average_param,
+            zero_division=cast(Any, 0),
+        )
+        test_recall = recall_score(
+            y_test,
+            y_pred_test,
+            average=average_param,
+            zero_division=cast(Any, 0),
+        )
+        test_f1 = f1_score(
+            y_test,
+            y_pred_test,
+            average=average_param,
+            zero_division=cast(Any, 0),
+        )
+
+        cm = confusion_matrix(y_test, y_pred_test)
+
+        feature_importance = dict(zip(X_train.columns, model.feature_importances_))
+
+        metadata = {
+            "model_type": "GradientBoostingClassifier",
+            "task": "classification",
+            "train_accuracy": float(train_accuracy),
+            "test_accuracy": float(test_accuracy),
+            "test_precision": float(test_precision),
+            "test_recall": float(test_recall),
+            "test_f1": float(test_f1),
+            "confusion_matrix": cm.tolist(),
+            "feature_importance": {k: float(v) for k, v in feature_importance.items()},
+            "n_features": X_train.shape[1],
+            "n_train_samples": len(X_train),
+            "n_test_samples": len(X_test),
+            "target_column": target_col,
+            "classes": list(model.classes_),
+            "n_estimators": n_estimators,
+            "learning_rate": learning_rate,
+            "max_depth": max_depth,
+        }
+
+        return {
+            "df": df,
+            "train_df": train_df,
+            "test_df": test_df,
+            "model": model,
+            "metadata": metadata,
+        }
+
+    def suggest_columns(self, df: pd.DataFrame) -> List[str]:
+        return []
+
+    def to_python_code(self, params: Dict[str, Any]) -> str:
+        n_estimators = params.get("n_estimators", 200)
+        learning_rate = params.get("learning_rate", 0.1)
+        max_depth = params.get("max_depth", 3)
+
+        code = "# Fit Gradient Boosting Classifier\n"
+        code += "from sklearn.ensemble import GradientBoostingClassifier\n"
+        code += "model = GradientBoostingClassifier(\n"
+        code += f"    n_estimators={n_estimators},\n"
+        code += f"    learning_rate={learning_rate},\n"
+        code += f"    max_depth={max_depth},\n"
+        code += "    random_state=42\n"
+        code += ")\n"
+        code += "model.fit(X_train, y_train)\n"
+        code += "print('Train accuracy:', model.score(X_train, y_train))\n"
+        code += "print('Test accuracy:', model.score(X_test, y_test))"
+
+        return code
+
+
+class ExtraTreesClassifierAction(Action):
+    """Fit an Extra Trees Classifier."""
+
+    name = "ExtraTreesClassifier"
+    description = "Extra Trees ensemble for classification"
+    mode = "modeling"
+
+    def get_parameters(self) -> List[Parameter]:
+        return [
+            Parameter(
+                name="n_estimators",
+                label="Number of Trees",
+                type="numeric",
+                required=False,
+                default=300,
+                description="Number of trees in the ensemble",
+            ),
+            Parameter(
+                name="max_depth",
+                label="Maximum Depth",
+                type="numeric",
+                required=False,
+                default=10,
+                description="Maximum depth of each tree (None for unlimited)",
+            ),
+            Parameter(
+                name="min_samples_split",
+                label="Min Samples to Split",
+                type="numeric",
+                required=False,
+                default=2,
+                description="Minimum samples required to split an internal node",
+            ),
+            Parameter(
+                name="min_samples_leaf",
+                label="Min Samples in Leaf",
+                type="numeric",
+                required=False,
+                default=1,
+                description="Minimum samples required in a leaf node",
+            ),
+        ]
+
+    def validate(
+        self,
+        df: pd.DataFrame,
+        params: Dict[str, Any],
+        train_df: Optional[pd.DataFrame] = None,
+        test_df: Optional[pd.DataFrame] = None,
+    ) -> Tuple[bool, str]:
+        if train_df is None or test_df is None:
+            return False, "Must perform train/test split before fitting a model"
+
+        n_estimators = params.get("n_estimators", 300)
+        if n_estimators < 1:
+            return False, "n_estimators must be >= 1"
+
+        return True, ""
+
+    def execute(
+        self,
+        df: pd.DataFrame,
+        params: Dict[str, Any],
+        train_df: Optional[pd.DataFrame] = None,
+        test_df: Optional[pd.DataFrame] = None,
+    ) -> Dict[str, Any]:
+        if train_df is None or test_df is None:
+            raise ValueError("Train/test split must be completed before modeling")
+
+        n_estimators = int(params.get("n_estimators", 300))
+        max_depth = params.get("max_depth", 10)
+        if max_depth == 0:
+            max_depth = None
+        min_samples_split = int(params.get("min_samples_split", 2))
+        min_samples_leaf = int(params.get("min_samples_leaf", 1))
+
+        target_col = cast(Hashable, train_df.columns[-1])
+
+        X_train = train_df.drop(columns=[target_col])
+        y_train = train_df[target_col]
+        X_test = test_df.drop(columns=[target_col])
+        y_test = test_df[target_col]
+
+        model = SKExtraTreesClassifier(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            min_samples_split=min_samples_split,
+            min_samples_leaf=min_samples_leaf,
+            random_state=42,
+            n_jobs=-1,
+        )
+
+        model.fit(X_train, y_train)
+
+        y_pred_train = model.predict(X_train)
+        y_pred_test = model.predict(X_test)
+
+        train_accuracy = accuracy_score(y_train, y_pred_train)
+        test_accuracy = accuracy_score(y_test, y_pred_test)
+
+        average_param = "binary" if len(np.unique(y_train)) == 2 else "weighted"
+
+        test_precision = precision_score(
+            y_test,
+            y_pred_test,
+            average=average_param,
+            zero_division=cast(Any, 0),
+        )
+        test_recall = recall_score(
+            y_test,
+            y_pred_test,
+            average=average_param,
+            zero_division=cast(Any, 0),
+        )
+        test_f1 = f1_score(
+            y_test,
+            y_pred_test,
+            average=average_param,
+            zero_division=cast(Any, 0),
+        )
+
+        cm = confusion_matrix(y_test, y_pred_test)
+
+        feature_importance = dict(zip(X_train.columns, model.feature_importances_))
+
+        metadata = {
+            "model_type": "ExtraTreesClassifier",
+            "task": "classification",
+            "train_accuracy": float(train_accuracy),
+            "test_accuracy": float(test_accuracy),
+            "test_precision": float(test_precision),
+            "test_recall": float(test_recall),
+            "test_f1": float(test_f1),
+            "confusion_matrix": cm.tolist(),
+            "feature_importance": {k: float(v) for k, v in feature_importance.items()},
+            "n_features": X_train.shape[1],
+            "n_train_samples": len(X_train),
+            "n_test_samples": len(X_test),
+            "target_column": target_col,
+            "classes": list(model.classes_),
+            "n_estimators": n_estimators,
+        }
+
+        return {
+            "df": df,
+            "train_df": train_df,
+            "test_df": test_df,
+            "model": model,
+            "metadata": metadata,
+        }
+
+    def suggest_columns(self, df: pd.DataFrame) -> List[str]:
+        return []
+
+    def to_python_code(self, params: Dict[str, Any]) -> str:
+        n_estimators = params.get("n_estimators", 300)
+        max_depth = params.get("max_depth", 10)
+        min_samples_split = params.get("min_samples_split", 2)
+        min_samples_leaf = params.get("min_samples_leaf", 1)
+
+        code = "# Fit Extra Trees Classifier\n"
+        code += "from sklearn.ensemble import ExtraTreesClassifier\n"
+        code += "model = ExtraTreesClassifier(\n"
+        code += f"    n_estimators={n_estimators},\n"
+        code += f"    max_depth={max_depth},\n"
+        code += f"    min_samples_split={min_samples_split},\n"
+        code += f"    min_samples_leaf={min_samples_leaf},\n"
+        code += "    random_state=42,\n"
+        code += "    n_jobs=-1\n"
+        code += ")\n"
+        code += "model.fit(X_train, y_train)\n"
+        code += "print('Train accuracy:', model.score(X_train, y_train))\n"
+        code += "print('Test accuracy:', model.score(X_test, y_test))"
 
         return code

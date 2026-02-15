@@ -17,6 +17,9 @@ from treelab.actions.transformations import (
     OneHotEncoderAction,
     LabelEncoderAction,
     TrainTestSplitAction,
+    PCAAction,
+    PolynomialFeaturesAction,
+    RFEAction,
 )
 
 from treelab.actions.modeling import (
@@ -41,6 +44,9 @@ def register_all_actions():
     ActionRegistry.register_transformation(OneHotEncoderAction)
     ActionRegistry.register_transformation(LabelEncoderAction)
     ActionRegistry.register_transformation(TrainTestSplitAction)
+    ActionRegistry.register_transformation(PCAAction)
+    ActionRegistry.register_transformation(PolynomialFeaturesAction)
+    ActionRegistry.register_transformation(RFEAction)
 
     # Modeling actions
     ActionRegistry.register_modeling(DecisionTreeClassifierAction)

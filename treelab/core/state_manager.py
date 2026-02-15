@@ -54,6 +54,13 @@ class StateManager:
         # Model tracking
         self.current_model: Optional[Any] = None
         self.model_metadata: Dict[str, Any] = {}
+        self.fitted_models: List[
+            Dict[str, Any]
+        ] = []  # Store all fitted models for comparison
+
+        # Last action metadata (for transformations)
+        self.last_action_metadata: Dict[str, Any] = {}
+        self.last_action_name: Optional[str] = None
 
         # Mode tracking
         self.mode: str = "transformation"  # 'transformation' or 'modeling'
@@ -90,6 +97,24 @@ class StateManager:
             if result.get("model") is not None:
                 self.current_model = result["model"]
                 self.model_metadata = result.get("metadata", {})
+
+                # Store in fitted models list for comparison
+                model_info = {
+                    "model": result["model"],
+                    "metadata": result.get("metadata", {}),
+                    "name": params.get(
+                        "model_name", f"Model {len(self.fitted_models) + 1}"
+                    ),
+                    "action_name": action_name,
+                    "params": params.copy(),
+                    "timestamp": datetime.now(),
+                }
+                self.fitted_models.append(model_info)
+
+            # Store last action metadata for transformations
+            if "metadata" in result:
+                self.last_action_metadata = result.get("metadata", {})
+                self.last_action_name = action_name
 
             # Update target column if specified
             if "target_column" in result:
@@ -223,12 +248,24 @@ class StateManager:
             "test_shape": self.test_df.shape if self.test_df is not None else None,
             "target_column": self.target_column,
             "has_model": self.current_model is not None,
+            "num_fitted_models": len(self.fitted_models),
             "num_actions": len(self.history),
             "num_checkpoints": len(self.checkpoints),
             "session_duration": (datetime.now() - self.session_start).seconds,
         }
 
         return info
+
+    def get_fitted_models(self) -> List[Dict[str, Any]]:
+        """Get all fitted models for comparison."""
+        return self.fitted_models
+
+    def set_model_name(self, index: int, name: str) -> bool:
+        """Set a custom name for a fitted model."""
+        if 0 <= index < len(self.fitted_models):
+            self.fitted_models[index]["name"] = name
+            return True
+        return False
 
     def reset(self):
         """Reset to original DataFrame state."""
@@ -240,4 +277,6 @@ class StateManager:
         self.target_column = None
         self.current_model = None
         self.model_metadata = {}
+        self.last_action_metadata = {}
+        self.last_action_name = None
         self.mode = "transformation"

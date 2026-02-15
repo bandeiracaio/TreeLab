@@ -11,6 +11,11 @@ from treelab.actions.transformations.encoding import (
     LabelEncoderAction,
 )
 from treelab.actions.transformations.utilities import TrainTestSplitAction
+from treelab.actions.transformations.feature_engineering import (
+    PCAAction,
+    PolynomialFeaturesAction,
+    RFEAction,
+)
 
 __all__ = [
     "DropColumnsAction",
@@ -20,4 +25,7 @@ __all__ = [
     "OneHotEncoderAction",
     "LabelEncoderAction",
     "TrainTestSplitAction",
+    "PCAAction",
+    "PolynomialFeaturesAction",
+    "RFEAction",
 ]

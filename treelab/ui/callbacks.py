@@ -178,13 +178,18 @@ def register_callbacks(app):
             Output("mode-transform", "active"),
             Output("mode-model", "active"),
             Output("tab-model-link", "disabled"),
+            Output("tab-compare-link", "disabled"),
             Output("mode-display", "children"),
             Output("mode-indicator", "style"),
         ],
-        [Input("mode-transform", "n_clicks"), Input("mode-model", "n_clicks")],
+        [
+            Input("mode-transform", "n_clicks"),
+            Input("mode-model", "n_clicks"),
+            Input("refresh-trigger", "data"),
+        ],
         [State("current-mode", "data")],
     )
-    def switch_mode(transform_clicks, model_clicks, current_mode):
+    def switch_mode(transform_clicks, model_clicks, refresh_trigger, current_mode):
         """Handle mode switching between transformation and modeling."""
         ctx = callback_context
 
@@ -206,6 +211,8 @@ def register_callbacks(app):
                 True,  # transform active
                 False,  # model not active
                 True,  # model tab disabled initially
+                len(app.state_manager.fitted_models)
+                < 2,  # compare tab disabled until 2+ models
                 "TRANSFORMATION",
                 mode_style,
             )
@@ -232,6 +239,7 @@ def register_callbacks(app):
                     True,
                     False,
                     True,
+                    len(app.state_manager.fitted_models) < 2,
                     "TRANSFORMATION",
                     mode_style,
                 )
@@ -254,6 +262,8 @@ def register_callbacks(app):
                 False,  # transform not active
                 True,  # model active
                 False,  # model tab enabled
+                len(app.state_manager.fitted_models)
+                < 2,  # compare tab disabled until 2+ models
                 "MODELING",
                 mode_style,
             )
@@ -276,6 +286,8 @@ def register_callbacks(app):
                 True,
                 False,
                 not app.state_manager.current_model,  # Enable model tab if model exists
+                len(app.state_manager.fitted_models)
+                < 2,  # compare tab disabled until 2+ models
                 "TRANSFORMATION",
                 mode_style,
             )
@@ -381,7 +393,11 @@ def register_callbacks(app):
             return html.Div(f"Error loading parameters: {str(e)}"), True
 
     @app.callback(
-        [Output("action-status", "children"), Output("refresh-trigger", "data")],
+        [
+            Output("action-status", "children"),
+            Output("refresh-trigger", "data"),
+            Output("action-spinner", "style"),
+        ],
         [Input("execute-button", "n_clicks")],
         [
             State("action-selector", "value"),
@@ -393,7 +409,10 @@ def register_callbacks(app):
     def execute_action(n_clicks, action_name, param_ids, param_values, refresh_count):
         """Execute the selected action."""
         if not n_clicks or not action_name:
-            return "", refresh_count
+            return "", refresh_count, {"display": "none"}
+
+        # Show spinner while processing
+        spinner_style = {"display": "block", "marginTop": "10px", "textAlign": "center"}
 
         try:
             # Build params dictionary
@@ -415,9 +434,11 @@ def register_callbacks(app):
             )
 
             if not is_valid:
-                return dbc.Alert(
-                    f"[X] Validation Error: {error_msg}", color="danger"
-                ), refresh_count
+                return (
+                    dbc.Alert(f"[X] Validation Error: {error_msg}", color="danger"),
+                    refresh_count,
+                    spinner_style,
+                )
 
             # Execute
             result = action.execute(
@@ -434,14 +455,20 @@ def register_callbacks(app):
                 msg = dbc.Alert(
                     f"[OK] Successfully executed: {action_name}", color="success"
                 )
-                return msg, refresh_count + 1
+                return msg, refresh_count + 1, {"display": "none"}
             else:
-                return dbc.Alert(
-                    "[X] Failed to apply action", color="danger"
-                ), refresh_count
+                return (
+                    dbc.Alert("[X] Failed to apply action", color="danger"),
+                    refresh_count,
+                    {"display": "none"},
+                )
 
         except Exception as e:
-            return dbc.Alert(f"[X] Error: {str(e)}", color="danger"), refresh_count
+            return (
+                dbc.Alert(f"[X] Error: {str(e)}", color="danger"),
+                refresh_count,
+                {"display": "none"},
+            )
 
     @app.callback(
         Output("history-list", "children"), [Input("refresh-trigger", "data")]
@@ -559,6 +586,8 @@ def register_callbacks(app):
                 return render_correlations_tab()
             elif active_tab == "tab-model":
                 return render_model_results_tab()
+            elif active_tab == "tab-compare":
+                return render_model_comparison_tab()
             elif active_tab == "tab-help":
                 return render_help_tab()
             else:
@@ -1243,6 +1272,140 @@ def register_callbacks(app):
             ]
         )
 
+    def render_model_comparison_tab():
+        """Render model comparison tab."""
+        fitted_models = app.state_manager.get_fitted_models()
+
+        if not fitted_models:
+            return html.Div(
+                [
+                    html.H5("Model Comparison"),
+                    html.P(
+                        "No models fitted yet. Fit multiple models to compare them.",
+                        className="text-muted",
+                    ),
+                ]
+            )
+
+        # Build comparison table
+        comparison_data = []
+        for i, model_info in enumerate(fitted_models):
+            metadata = model_info.get("metadata", {})
+            task = metadata.get("task", "classification")
+
+            row = {
+                "#": i + 1,
+                "Name": model_info.get("name", f"Model {i + 1}"),
+                "Type": model_info.get("action_name", "Unknown"),
+            }
+
+            if task == "classification":
+                row["Test Accuracy"] = f"{metadata.get('test_accuracy', 0):.4f}"
+                row["Precision"] = f"{metadata.get('test_precision', 0):.4f}"
+                row["Recall"] = f"{metadata.get('test_recall', 0):.4f}"
+                row["F1"] = f"{metadata.get('test_f1', 0):.4f}"
+            else:  # regression
+                row["Test R2"] = f"{metadata.get('test_r2', 0):.4f}"
+                row["MAE"] = f"{metadata.get('test_mae', 0):.4f}"
+                row["RMSE"] = f"{metadata.get('test_rmse', 0):.4f}"
+
+            comparison_data.append(row)
+
+        comparison_df = pd.DataFrame(comparison_data)
+
+        # Create bar chart for comparison
+        fig_compare = None
+        if fitted_models:
+            model_names = [
+                m.get("name", f"Model {i + 1}") for i, m in enumerate(fitted_models)
+            ]
+
+            # Get primary metric for each model
+            primary_metrics = []
+            for model_info in fitted_models:
+                metadata = model_info.get("metadata", {})
+                task = metadata.get("task", "classification")
+                if task == "classification":
+                    primary_metrics.append(metadata.get("test_accuracy", 0))
+                else:
+                    primary_metrics.append(metadata.get("test_r2", 0))
+
+            fig_compare = px.bar(
+                x=model_names,
+                y=primary_metrics,
+                title="Model Performance Comparison",
+                labels={"x": "Model", "y": "Primary Metric"},
+                color=primary_metrics,
+                color_continuous_scale="Viridis",
+            )
+            fig_compare.update_layout(plot_bgcolor="white", showlegend=False)
+
+        return html.Div(
+            [
+                html.H5(f"Model Comparison ({len(fitted_models)} models)"),
+                html.P(
+                    "Compare performance metrics across all fitted models.",
+                    className="text-muted",
+                ),
+                html.Hr(),
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                html.H6("Performance Chart"),
+                                dcc.Graph(figure=fig_compare)
+                                if fig_compare is not None
+                                else html.Div(),
+                            ],
+                            width=12,
+                        ),
+                    ]
+                ),
+                html.Hr(),
+                html.H6("Metrics Table"),
+                dbc.Table.from_dataframe(
+                    comparison_df, striped=True, bordered=True, hover=True
+                ),
+                html.Hr(),
+                html.H6("Model Details"),
+                html.Div(
+                    [
+                        dbc.Accordion(
+                            [
+                                dbc.AccordionItem(
+                                    title=f"{m.get('name', f'Model {i + 1}')} - {m.get('action_name', '')}",
+                                    children=[
+                                        html.Div(
+                                            [
+                                                html.Strong("Parameters: "),
+                                                html.Span(str(m.get("params", {}))),
+                                            ]
+                                        ),
+                                        html.Div(
+                                            [
+                                                html.Strong("Target: "),
+                                                html.Span(
+                                                    str(
+                                                        m.get("metadata", {}).get(
+                                                            "target_column", "N/A"
+                                                        )
+                                                    )
+                                                ),
+                                            ],
+                                            style={"marginTop": "5px"},
+                                        ),
+                                    ],
+                                )
+                                for i, m in enumerate(fitted_models)
+                            ],
+                            always_open=True,
+                        )
+                    ],
+                    style={"marginTop": "10px"},
+                ),
+            ]
+        )
+
     def render_help_tab():
         """Render help documentation tab."""
         return html.Div(
@@ -1259,7 +1422,7 @@ def register_callbacks(app):
    |_||_|  \\___|\\___|_____\\__,_|_.__/ 
                                        
          Interactive Data Science Laboratory
-                   Version 0.2.3
+                   Version 0.3.0
             """,
                     style={"fontSize": "10px", "lineHeight": "1.2"},
                 ),
@@ -1604,7 +1767,7 @@ def register_callbacks(app):
                 html.P(
                     [
                         "TreeLab Version: ",
-                        html.Strong("0.2.3"),
+                        html.Strong("0.3.0"),
                         html.Br(),
                         "Built with: Python, Dash, Plotly, scikit-learn, pandas",
                     ],
