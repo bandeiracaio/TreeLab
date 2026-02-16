@@ -22,6 +22,7 @@ from treelab.ui.model_results import (
     create_model_details_panel,
     create_action_bar,
 )
+from treelab.ui.pages.statistics import StatisticsPage
 
 
 def register_callbacks(app):
@@ -669,36 +670,10 @@ def register_callbacks(app):
         return create_data_table(df)
 
     def render_stats_tab():
-        """Render statistics tab."""
+        """Render enhanced statistics tab."""
         df = app.state_manager.df
-
-        # Descriptive statistics
-        desc = df.describe(include="all").transpose()
-        desc = desc.reset_index()
-        desc.columns = ["Column"] + list(desc.columns[1:])
-
-        # Missing values
-        missing = pd.DataFrame(
-            {
-                "Column": df.columns,
-                "Missing Count": df.isnull().sum().values,
-                "Missing %": (df.isnull().sum().values / len(df) * 100).round(2),
-            }
-        )
-
-        return html.Div(
-            [
-                html.H5("Descriptive Statistics"),
-                dbc.Table.from_dataframe(
-                    desc.head(20), striped=True, bordered=True, hover=True, size="sm"
-                ),
-                html.Hr(),
-                html.H5("Missing Values"),
-                dbc.Table.from_dataframe(
-                    missing, striped=True, bordered=True, hover=True, size="sm"
-                ),
-            ]
-        )
+        stats_page = StatisticsPage(df)
+        return stats_page.render()
 
     def render_distributions_tab():
         """Render distributions tab with subplots for all numeric columns."""
