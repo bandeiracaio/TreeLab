@@ -833,12 +833,60 @@ def register_callbacks(app):
 
         return fig, stats
 
-    def render_model_results_tab():
+    def render_model_results_tab(selected_model_idx=None):
         """Render improved model results tab with enhanced visualizations."""
-        if not app.state_manager.current_model:
+        # Get all fitted models
+        fitted_models = app.state_manager.get_fitted_models()
+
+        if not fitted_models:
             return html.Div("No model fitted yet", className="text-muted")
 
-        metadata = app.state_manager.model_metadata
+        # If we have multiple models, show a selector
+        model_selector = None
+        if len(fitted_models) > 1:
+            model_options = [
+                {
+                    "label": f"{i + 1}. {m.get('action_name', 'Unknown')} - {m.get('name', f'Model {i + 1}')}",
+                    "value": i,
+                }
+                for i, m in enumerate(fitted_models)
+            ]
+
+            # Use selected model or current model
+            if selected_model_idx is not None and 0 <= selected_model_idx < len(
+                fitted_models
+            ):
+                current_model_idx = selected_model_idx
+            else:
+                # Find current model index
+                current_model_idx = 0
+                for i, m in enumerate(fitted_models):
+                    if m.get("model") == app.state_manager.current_model:
+                        current_model_idx = i
+                        break
+
+            model_selector = html.Div(
+                [
+                    html.H6("Select Model:"),
+                    dcc.Dropdown(
+                        id="model-selector-dropdown",
+                        options=model_options,
+                        value=current_model_idx,
+                        clearable=False,
+                        className="mb-3",
+                    ),
+                    html.Hr(),
+                ]
+            )
+
+            # Use the selected model's metadata
+            selected_model = fitted_models[current_model_idx]
+            metadata = selected_model.get("metadata", {})
+            current_model = selected_model.get("model")
+        else:
+            metadata = app.state_manager.model_metadata
+            current_model = app.state_manager.current_model
+
         task = metadata.get("task", "classification")
 
         # Header section with model info
@@ -910,7 +958,7 @@ def register_callbacks(app):
                 y_train = app.state_manager.train_df[target].values
 
         tree_fig = build_tree_figure(
-            app.state_manager.current_model, feature_names, max_depth=3, y_train=y_train
+            current_model, feature_names, max_depth=3, y_train=y_train
         )
         if tree_fig:
             row2_elements.append(
@@ -1051,12 +1099,20 @@ def register_callbacks(app):
             )
 
         # Assemble final layout
-        layout_elements = [
-            header,
-            action_bar,
-            metrics_cards,
-            html.Hr(),
-        ]
+        layout_elements = []
+
+        # Add model selector if multiple models exist
+        if model_selector:
+            layout_elements.append(model_selector)
+
+        layout_elements.extend(
+            [
+                header,
+                action_bar,
+                metrics_cards,
+                html.Hr(),
+            ]
+        )
 
         if tuning_section:
             layout_elements.extend([tuning_section, html.Hr()])
@@ -1944,6 +2000,19 @@ def register_callbacks(app):
             ],
             style={"padding": "20px"},
         )
+
+    # Model results page callback for model selector
+    @app.callback(
+        Output("tab-content", "children", allow_duplicate=True),
+        [Input("model-selector-dropdown", "value")],
+        prevent_initial_call=True,
+    )
+    def update_model_results_tab(selected_model_idx):
+        """Update model results tab when different model is selected."""
+        if selected_model_idx is None:
+            raise PreventUpdate
+
+        return render_model_results_tab(selected_model_idx)
 
     # Distributions page callbacks
     @app.callback(

@@ -349,8 +349,44 @@ class StatisticsPage:
         return html.Div(
             [
                 dbc.Alert(
-                    f"⚠️ Found {n_duplicates} duplicate rows ({n_duplicates / len(self.df) * 100:.1f}% of dataset)",
+                    [
+                        html.H6(
+                            f"⚠️ Found {n_duplicates} duplicate rows ({n_duplicates / len(self.df) * 100:.1f}% of dataset)",
+                            className="alert-heading",
+                        ),
+                        html.P(
+                            "Duplicate rows are records where ALL column values are identical to another record. "
+                            "This can happen due to data entry errors, system glitches, or merging datasets. "
+                            "Duplicates can bias your analysis and should typically be removed.",
+                            className="mb-0 small",
+                        ),
+                    ],
                     color="warning",
+                ),
+                dbc.Card(
+                    [
+                        dbc.CardHeader("What should I do?"),
+                        dbc.CardBody(
+                            [
+                                html.P(
+                                    [
+                                        html.Strong("Recommendation: "),
+                                        "Use the 'DropDuplicates' action to remove duplicate rows. "
+                                        "Keep the first occurrence or specify which rows to keep.",
+                                    ],
+                                    className="card-text",
+                                ),
+                                html.P(
+                                    [
+                                        html.Strong("Impact: "),
+                                        f"Removing {n_duplicates} duplicates will reduce your dataset from {len(self.df):,} to {len(self.df) - n_duplicates:,} rows.",
+                                    ],
+                                    className="card-text small text-muted",
+                                ),
+                            ]
+                        ),
+                    ],
+                    className="mb-3 shadow-sm",
                 ),
                 html.H6("Sample of Duplicate Rows"),
                 dbc.Table.from_dataframe(

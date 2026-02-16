@@ -61,19 +61,33 @@ class DistributionsPage:
                         dbc.Col(
                             [
                                 html.Label("Chart Type:", className="fw-bold"),
-                                dcc.RadioItems(
+                                dcc.Dropdown(
                                     id="dist-chart-type",
                                     options=[
                                         {
-                                            "label": " Histogram + KDE",
+                                            "label": "📊 Histogram + KDE",
                                             "value": "histogram",
                                         },
-                                        {"label": " Box Plot", "value": "box"},
-                                        {"label": " Q-Q Plot", "value": "qq"},
-                                        {"label": " CDF", "value": "cdf"},
+                                        {"label": "📦 Box Plot", "value": "box"},
+                                        {
+                                            "label": "📈 Q-Q Plot (Normality)",
+                                            "value": "qq",
+                                        },
+                                        {
+                                            "label": "📉 Cumulative Distribution",
+                                            "value": "cdf",
+                                        },
+                                        {
+                                            "label": "🎨 Histogram by Quartiles",
+                                            "value": "histogram_quartile",
+                                        },
+                                        {
+                                            "label": "🎨 Histogram by Deciles",
+                                            "value": "histogram_decile",
+                                        },
                                     ],
                                     value="histogram",
-                                    inline=True,
+                                    clearable=False,
                                     className="mt-2",
                                 ),
                             ],
@@ -179,9 +193,11 @@ class DistributionsPage:
 
         elif chart_type == "qq":
             # Q-Q plot
-            qq = stats.probplot(series, dist="norm")
-            theoretical = qq[0][0]
-            sample = qq[0][1]
+            from scipy.stats import probplot
+
+            # probplot returns (osm, osr), (slope, intercept, r)
+            # osm = theoretical quantiles, osr = sample quantiles
+            (theoretical, sample), (slope, intercept, r) = probplot(series, dist="norm")
 
             fig = go.Figure()
             fig.add_trace(
@@ -195,7 +211,6 @@ class DistributionsPage:
             )
 
             # Add reference line
-            slope, intercept = qq[1]
             line_x = np.array([theoretical.min(), theoretical.max()])
             line_y = slope * line_x + intercept
 
@@ -210,7 +225,7 @@ class DistributionsPage:
             )
 
             fig.update_layout(
-                title=f"Q-Q Plot: {column} vs Normal Distribution",
+                title=f"Q-Q Plot: {column} vs Normal Distribution (R²={r**2:.3f})",
                 xaxis_title="Theoretical Quantiles",
                 yaxis_title="Sample Quantiles",
                 height=500,
@@ -238,6 +253,152 @@ class DistributionsPage:
                 title=f"Cumulative Distribution Function: {column}",
                 xaxis_title=column,
                 yaxis_title="Cumulative Probability",
+                height=500,
+                plot_bgcolor="white",
+            )
+
+        elif chart_type == "histogram_quartile":
+            # Histogram colored by quartiles
+            quartiles = series.quantile([0.25, 0.5, 0.75])
+            q1, q2, q3 = quartiles[0.25], quartiles[0.5], quartiles[0.75]
+
+            # Create color array based on quartiles
+            colors = []
+            for val in series:
+                if val <= q1:
+                    colors.append("#2196f3")  # Blue - Q1
+                elif val <= q2:
+                    colors.append("#4caf50")  # Green - Q2
+                elif val <= q3:
+                    colors.append("#ff9800")  # Orange - Q3
+                else:
+                    colors.append("#f44336")  # Red - Q4
+
+            fig = go.Figure()
+            fig.add_trace(
+                go.Histogram(
+                    x=series,
+                    nbinsx=30,
+                    marker=dict(
+                        color=colors,
+                        line=dict(width=1, color="white"),
+                    ),
+                    showlegend=False,
+                )
+            )
+
+            # Add vertical lines for quartiles
+            fig.add_vline(
+                x=q1, line_dash="dash", line_color="#2196f3", annotation_text="Q1"
+            )
+            fig.add_vline(
+                x=q2,
+                line_dash="dash",
+                line_color="#4caf50",
+                annotation_text="Q2 (Median)",
+            )
+            fig.add_vline(
+                x=q3, line_dash="dash", line_color="#ff9800", annotation_text="Q3"
+            )
+
+            fig.update_layout(
+                title=f"Distribution of {column} by Quartiles",
+                xaxis_title=column,
+                yaxis_title="Count",
+                height=500,
+                plot_bgcolor="white",
+            )
+
+            # Add legend annotation
+            fig.add_annotation(
+                x=0.02,
+                y=0.98,
+                xref="paper",
+                yref="paper",
+                text="Blue=Q1 | Green=Q2 | Orange=Q3 | Red=Q4",
+                showarrow=False,
+                bgcolor="white",
+                bordercolor="black",
+                borderwidth=1,
+                font=dict(size=10),
+            )
+
+        elif chart_type == "histogram_decile":
+            # Histogram colored by deciles
+            deciles = series.quantile(np.arange(0.1, 1.0, 0.1))
+            decile_colors = [
+                "#2196f3",
+                "#42a5f5",
+                "#64b5f6",
+                "#90caf9",
+                "#bbdefb",
+                "#fff3e0",
+                "#ffe0b2",
+                "#ffcc80",
+                "#ffb74d",
+                "#ff9800",
+            ]
+
+            # Create color array based on deciles
+            colors = []
+            for val in series:
+                for i, (decile_val, color) in enumerate(zip(deciles, decile_colors)):
+                    if val <= decile_val:
+                        colors.append(color)
+                        break
+                else:
+                    colors.append(decile_colors[-1])
+
+            fig = go.Figure()
+            fig.add_trace(
+                go.Histogram(
+                    x=series,
+                    nbinsx=30,
+                    marker=dict(
+                        color=colors,
+                        line=dict(width=1, color="white"),
+                    ),
+                    showlegend=False,
+                )
+            )
+
+            # Add vertical lines for deciles
+            for i, (decile_val, color) in enumerate(zip(deciles, decile_colors)):
+                if i % 2 == 0:  # Only show every other decile line to avoid clutter
+                    fig.add_vline(
+                        x=decile_val,
+                        line_dash="dot",
+                        line_color=color,
+                        line_width=1,
+                    )
+
+            fig.update_layout(
+                title=f"Distribution of {column} by Deciles",
+                xaxis_title=column,
+                yaxis_title="Count",
+                height=500,
+                plot_bgcolor="white",
+            )
+
+            # Add legend annotation
+            fig.add_annotation(
+                x=0.02,
+                y=0.98,
+                xref="paper",
+                yref="paper",
+                text="Colors: D1 (Blue) → D10 (Orange)",
+                showarrow=False,
+                bgcolor="white",
+                bordercolor="black",
+                borderwidth=1,
+                font=dict(size=10),
+            )
+
+        else:
+            # Default empty figure
+            fig = go.Figure()
+            fig.update_layout(
+                title="Select a chart type",
                 height=500,
                 plot_bgcolor="white",
             )
