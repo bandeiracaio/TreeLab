@@ -258,47 +258,78 @@ class DistributionsPage:
             )
 
         elif chart_type == "histogram_quartile":
-            # Histogram colored by quartiles
-            quartiles = series.quantile([0.25, 0.5, 0.75])
-            q1, q2, q3 = quartiles[0.25], quartiles[0.5], quartiles[0.75]
+            # Histogram colored by quartiles - create separate traces for each quartile
+            q1_q = series.quantile(0.25)
+            q2_q = series.quantile(0.5)
+            q3_q = series.quantile(0.75)
 
-            # Create color array based on quartiles
-            colors = []
-            for val in series:
-                if val <= q1:
-                    colors.append("#2196f3")  # Blue - Q1
-                elif val <= q2:
-                    colors.append("#4caf50")  # Green - Q2
-                elif val <= q3:
-                    colors.append("#ff9800")  # Orange - Q3
-                else:
-                    colors.append("#f44336")  # Red - Q4
+            # Split data into quartile groups
+            q1_data = series[series <= q1_q]
+            q2_data = series[(series > q1_q) & (series <= q2_q)]
+            q3_data = series[(series > q2_q) & (series <= q3_q)]
+            q4_data = series[series > q3_q]
 
             fig = go.Figure()
+
+            # Add histogram trace for each quartile
             fig.add_trace(
                 go.Histogram(
-                    x=series,
+                    x=q1_data,
+                    name="Q1 (≤25%)",
+                    marker_color="#2196f3",  # Blue
+                    opacity=0.8,
                     nbinsx=30,
-                    marker=dict(
-                        color=colors,
-                        line=dict(width=1, color="white"),
-                    ),
-                    showlegend=False,
+                )
+            )
+            fig.add_trace(
+                go.Histogram(
+                    x=q2_data,
+                    name="Q2 (25-50%)",
+                    marker_color="#4caf50",  # Green
+                    opacity=0.8,
+                    nbinsx=30,
+                )
+            )
+            fig.add_trace(
+                go.Histogram(
+                    x=q3_data,
+                    name="Q3 (50-75%)",
+                    marker_color="#ff9800",  # Orange
+                    opacity=0.8,
+                    nbinsx=30,
+                )
+            )
+            fig.add_trace(
+                go.Histogram(
+                    x=q4_data,
+                    name="Q4 (>75%)",
+                    marker_color="#f44336",  # Red
+                    opacity=0.8,
+                    nbinsx=30,
                 )
             )
 
-            # Add vertical lines for quartiles
+            # Add vertical lines for quartile boundaries
             fig.add_vline(
-                x=q1, line_dash="dash", line_color="#2196f3", annotation_text="Q1"
-            )
-            fig.add_vline(
-                x=q2,
+                x=q1_q,
                 line_dash="dash",
-                line_color="#4caf50",
-                annotation_text="Q2 (Median)",
+                line_color="black",
+                line_width=2,
+                annotation_text="Q1",
             )
             fig.add_vline(
-                x=q3, line_dash="dash", line_color="#ff9800", annotation_text="Q3"
+                x=q2_q,
+                line_dash="dash",
+                line_color="black",
+                line_width=2,
+                annotation_text="Median (Q2)",
+            )
+            fig.add_vline(
+                x=q3_q,
+                line_dash="dash",
+                line_color="black",
+                line_width=2,
+                annotation_text="Q3",
             )
 
             fig.update_layout(
@@ -307,69 +338,59 @@ class DistributionsPage:
                 yaxis_title="Count",
                 height=500,
                 plot_bgcolor="white",
-            )
-
-            # Add legend annotation
-            fig.add_annotation(
-                x=0.02,
-                y=0.98,
-                xref="paper",
-                yref="paper",
-                text="Blue=Q1 | Green=Q2 | Orange=Q3 | Red=Q4",
-                showarrow=False,
-                bgcolor="white",
-                bordercolor="black",
-                borderwidth=1,
-                font=dict(size=10),
+                barmode="overlay",
+                legend=dict(
+                    orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+                ),
             )
 
         elif chart_type == "histogram_decile":
-            # Histogram colored by deciles
-            deciles = series.quantile(np.arange(0.1, 1.0, 0.1))
+            # Histogram colored by deciles - create separate traces for each decile
+            decile_values = [series.quantile(i / 10) for i in range(1, 11)]
             decile_colors = [
-                "#2196f3",
-                "#42a5f5",
-                "#64b5f6",
-                "#90caf9",
-                "#bbdefb",
-                "#fff3e0",
-                "#ffe0b2",
-                "#ffcc80",
-                "#ffb74d",
-                "#ff9800",
+                "#1a237e",  # D1 - Dark blue
+                "#283593",  # D2
+                "#3949ab",  # D3
+                "#5e35b1",  # D4 - Purple
+                "#8e24aa",  # D5
+                "#c2185b",  # D6 - Pink/Red
+                "#d32f2f",  # D7
+                "#f57c00",  # D8 - Orange
+                "#fb8c00",  # D9
+                "#ff6f00",  # D10 - Dark orange
             ]
 
-            # Create color array based on deciles
-            colors = []
-            for val in series:
-                for i, (decile_val, color) in enumerate(zip(deciles, decile_colors)):
-                    if val <= decile_val:
-                        colors.append(color)
-                        break
-                else:
-                    colors.append(decile_colors[-1])
-
             fig = go.Figure()
-            fig.add_trace(
-                go.Histogram(
-                    x=series,
-                    nbinsx=30,
-                    marker=dict(
-                        color=colors,
-                        line=dict(width=1, color="white"),
-                    ),
-                    showlegend=False,
-                )
-            )
 
-            # Add vertical lines for deciles
-            for i, (decile_val, color) in enumerate(zip(deciles, decile_colors)):
-                if i % 2 == 0:  # Only show every other decile line to avoid clutter
+            # Split data into decile groups and add a trace for each
+            prev_bound = series.min()
+            for i, (bound, color) in enumerate(zip(decile_values, decile_colors)):
+                if i == 0:
+                    data = series[series <= bound]
+                else:
+                    data = series[(series > prev_bound) & (series <= bound)]
+
+                if len(data) > 0:
+                    fig.add_trace(
+                        go.Histogram(
+                            x=data,
+                            name=f"D{i + 1} ({(i) * 10}-{(i + 1) * 10}%)",
+                            marker_color=color,
+                            opacity=0.9,
+                            nbinsx=30,
+                        )
+                    )
+                prev_bound = bound
+
+            # Add vertical lines for every other decile boundary
+            for i, bound in enumerate(decile_values):
+                if i % 2 == 1:  # Show D2, D4, D6, D8, D10 boundaries
                     fig.add_vline(
-                        x=decile_val,
+                        x=bound,
                         line_dash="dot",
-                        line_color=color,
+                        line_color="gray",
                         line_width=1,
+                        annotation_text=f"D{i + 1}",
                     )
 
             fig.update_layout(
@@ -378,22 +399,89 @@ class DistributionsPage:
                 yaxis_title="Count",
                 height=500,
                 plot_bgcolor="white",
+                barmode="overlay",
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1,
+                    font=dict(size=9),
+                ),
             )
 
-            # Add legend annotation
-            fig.add_annotation(
-                x=0.02,
-                y=0.98,
-                xref="paper",
-                yref="paper",
-                text="Colors: D1 (Blue) → D10 (Orange)",
-                showarrow=False,
-                bgcolor="white",
-                bordercolor="black",
-                borderwidth=1,
-                font=dict(size=10),
+        elif chart_type == "histogram_quartile":
+            # Histogram colored by quartiles
+            q1_q = series.quantile(0.25)
+            q2_q = series.quantile(0.5)
+            q3_q = series.quantile(0.75)
+            colors = [
+                "#1f77b4",
+                "#2ca02c",
+                "#ff7f0e",
+                "#d62728",
+            ]  # blue, green, orange, red
+            fig = go.Figure()
+            # Define quartile groups
+            groups = [
+                series[series <= q1_q],
+                series[(series > q1_q) & (series <= q2_q)],
+                series[(series > q2_q) & (series <= q3_q)],
+                series[series > q3_q],
+            ]
+            for idx, data in enumerate(groups):
+                fig.add_histogram(
+                    x=data,
+                    nbinsx=30,
+                    name=f"Q{idx + 1}",
+                    marker_color=colors[idx],
+                    opacity=0.7,
+                    showlegend=True,
+                )
+            fig.update_layout(
+                title=f"Distribution of {column} by Quartiles",
+                height=500,
+                plot_bgcolor="white",
             )
-
+        elif chart_type == "histogram_decile":
+            # Histogram colored by deciles
+            deciles = series.quantile([i / 10 for i in range(1, 11)])
+            colors = [
+                "#1f77b4",
+                "#aec7e8",
+                "#ff7f0e",
+                "#ffbb78",
+                "#2ca02c",
+                "#98df8a",
+                "#d62728",
+                "#ff9896",
+                "#9467bd",
+                "#c5b0d5",
+            ]
+            fig = go.Figure()
+            # Create histogram per decile
+            decile_bounds = [float(v) for v in deciles]
+            prev = series.min()
+            for i, bound in enumerate(decile_bounds):
+                data = (
+                    series[(series > prev) & (series <= bound)]
+                    if i > 0
+                    else series[series <= bound]
+                )
+                fig.add_histogram(
+                    x=data,
+                    nbinsx=30,
+                    name=f"D{i + 1}",
+                    marker_color=colors[i],
+                    opacity=0.7,
+                    showlegend=True,
+                )
+                prev = bound
+            fig.update_layout(
+                title=f"Distribution of {column} by Deciles",
+                height=500,
+                plot_bgcolor="white",
+            )
         else:
             # Default empty figure
             fig = go.Figure()
