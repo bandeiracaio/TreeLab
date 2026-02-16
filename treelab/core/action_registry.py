@@ -98,6 +98,42 @@ class ActionRegistry:
         return all_actions
 
     @classmethod
+    def get_actions_by_category(cls, mode: str) -> Dict[str, Dict[str, Type[Action]]]:
+        """
+        Get actions organized by category for a specific mode.
+
+        Args:
+            mode: 'transformation' or 'modeling'
+
+        Returns:
+            Dictionary mapping category names to dictionaries of action names to action classes
+        """
+        actions = cls.get_actions_for_mode(mode)
+        categories = {}
+
+        for action_name, action_class in actions.items():
+            category = getattr(action_class, "category", "General")
+            if category not in categories:
+                categories[category] = {}
+            categories[category][action_name] = action_class
+
+        return categories
+
+    @classmethod
+    def get_category_names(cls, mode: str) -> List[str]:
+        """
+        Get list of category names for a mode.
+
+        Args:
+            mode: 'transformation' or 'modeling'
+
+        Returns:
+            List of category names sorted alphabetically
+        """
+        actions_by_category = cls.get_actions_by_category(mode)
+        return sorted(actions_by_category.keys())
+
+    @classmethod
     def clear(cls):
         """Clear all registered actions (useful for testing)."""
         cls._transformation_actions = {}

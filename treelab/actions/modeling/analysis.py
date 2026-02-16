@@ -21,6 +21,7 @@ class FeatureImportanceAction(Action):
     name = "PlotFeatureImportance"
     description = "Fit a random forest and compute feature importance"
     mode = "modeling"
+    category = "Model Analysis"
 
     def get_parameters(self) -> List[Parameter]:
         return [

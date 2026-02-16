@@ -11,6 +11,17 @@ from datetime import datetime
 
 from treelab.core.action_registry import ActionRegistry
 from treelab.utils.column_analyzer import ColumnAnalyzer
+from treelab.ui.model_results import (
+    create_metrics_cards,
+    create_confusion_matrix_plot,
+    create_classification_report_table,
+    create_feature_importance_plot,
+    create_regression_scatter_plot,
+    create_roc_curves_plot,
+    create_model_header,
+    create_model_details_panel,
+    create_action_bar,
+)
 
 
 def register_callbacks(app):
@@ -981,155 +992,71 @@ def register_callbacks(app):
         return fig, stats
 
     def render_model_results_tab():
-        """Render model results tab."""
+        """Render improved model results tab with enhanced visualizations."""
         if not app.state_manager.current_model:
             return html.Div("No model fitted yet", className="text-muted")
 
         metadata = app.state_manager.model_metadata
         task = metadata.get("task", "classification")
 
-        tuning_block = None
-        if "best_params" in metadata:
-            best_params = metadata.get("best_params", {})
-            best_score = metadata.get("best_score")
-            params_df = pd.DataFrame(
-                {
-                    "Parameter": list(best_params.keys()),
-                    "Value": [str(v) for v in best_params.values()],
-                }
-            )
-            tuning_block = html.Div(
-                [
-                    html.H6("Tuning Results"),
-                    html.P(
-                        f"Best score ({metadata.get('scoring', 'score')}): {best_score:.4f}"
-                        if best_score is not None
-                        else "Best score unavailable",
-                        className="text-muted",
-                    ),
-                    dbc.Table.from_dataframe(
-                        params_df, striped=True, bordered=True, hover=True, size="sm"
-                    ),
-                    html.Hr(),
-                ]
-            )
+        # Header section with model info
+        header = create_model_header(metadata)
 
-        metrics_df = None
-        if task == "regression":
-            metrics_df = pd.DataFrame(
-                {
-                    "Metric": ["Train R2", "Test R2", "MAE", "RMSE"],
-                    "Value": [
-                        f"{metadata['train_r2']:.4f}",
-                        f"{metadata['test_r2']:.4f}",
-                        f"{metadata['test_mae']:.4f}",
-                        f"{metadata['test_rmse']:.4f}",
-                    ],
-                }
-            )
-        elif task == "classification":
-            metrics_df = pd.DataFrame(
-                {
-                    "Metric": [
-                        "Train Accuracy",
-                        "Test Accuracy",
-                        "Precision",
-                        "Recall",
-                        "F1-Score",
-                    ],
-                    "Value": [
-                        f"{metadata['train_accuracy']:.4f}",
-                        f"{metadata['test_accuracy']:.4f}",
-                        f"{metadata['test_precision']:.4f}",
-                        f"{metadata['test_recall']:.4f}",
-                        f"{metadata['test_f1']:.4f}",
-                    ],
-                }
-            )
+        # Action bar
+        action_bar = create_action_bar()
 
-        fig_cm = None
-        regression_scatter = None
+        # Key metrics cards
+        metrics_cards = create_metrics_cards(metadata, task)
+
+        # Build visualization rows
+        visualization_rows = []
+
+        # Row 1: Performance overview
+        row1_elements = []
 
         if task == "classification":
-            cm = metadata["confusion_matrix"]
-            total_samples = sum(sum(row) for row in cm)
-            accuracy = metadata["test_accuracy"]
-
-            fig_cm = px.imshow(
-                cm,
-                labels=dict(x="Predicted Class", y="Actual Class", color="Count"),
-                x=metadata["classes"],
-                y=metadata["classes"],
-                text_auto=True,
-                title=f"Confusion Matrix<br><sub>Accuracy: {accuracy:.1%} | Total Samples: {total_samples}</sub>",
-                color_continuous_scale="Blues",
-            )
-
-            fig_cm.update_traces(
-                hovertemplate="Actual: %{y}<br>Predicted: %{x}<br>Count: %{z}<extra></extra>"
-            )
-
-            fig_cm.update_layout(plot_bgcolor="white", font=dict(size=11))
-        elif task == "regression":
-            y_test = metadata.get("y_test", [])
-            y_pred = metadata.get("y_pred", [])
-            scatter_df = pd.DataFrame({"Actual": y_test, "Predicted": y_pred})
-
-            regression_scatter = px.scatter(
-                scatter_df,
-                x="Actual",
-                y="Predicted",
-                title="Actual vs Predicted",
-                trendline="ols",
-            )
-            regression_scatter.update_traces(
-                hovertemplate="Actual: %{x}<br>Predicted: %{y}<extra></extra>"
-            )
-            regression_scatter.update_layout(plot_bgcolor="white", font=dict(size=11))
-
-        fig_imp = None
-        if "feature_importance" in metadata:
-            feat_imp = metadata["feature_importance"]
-            feat_imp_df = (
-                pd.DataFrame(
-                    {
-                        "Feature": list(feat_imp.keys()),
-                        "Importance": list(feat_imp.values()),
-                    }
+            # Confusion matrix
+            fig_cm = create_confusion_matrix_plot(metadata)
+            row1_elements.append(
+                dbc.Col(
+                    dcc.Graph(figure=fig_cm, config={"displayModeBar": True}), width=6
                 )
-                .sort_values("Importance", ascending=False)
-                .head(15)
             )
 
-            feat_imp_df["Cumulative"] = feat_imp_df["Importance"].cumsum()
-            total_importance_shown = feat_imp_df["Importance"].sum()
+            # Classification report table
+            class_report = create_classification_report_table(metadata)
+            row1_elements.append(
+                dbc.Col(
+                    html.Div([html.H6("Classification Report"), class_report]), width=6
+                )
+            )
+        else:
+            # Regression scatter plot with residuals
+            fig_reg = create_regression_scatter_plot(metadata)
+            if fig_reg:
+                row1_elements.append(
+                    dbc.Col(
+                        dcc.Graph(figure=fig_reg, config={"displayModeBar": True}),
+                        width=12,
+                    )
+                )
 
-            fig_imp = px.bar(
-                feat_imp_df,
-                x="Importance",
-                y="Feature",
-                orientation="h",
-                title=f"Top 15 Feature Importances<br><sub>Showing {total_importance_shown:.1%} of total importance | {len(feat_imp)} features total</sub>",
-                labels={"Importance": "Importance Score"},
-                color="Importance",
-                color_continuous_scale="Viridis",
+        if row1_elements:
+            visualization_rows.append(dbc.Row(row1_elements, className="mb-4"))
+
+        # Row 2: Feature importance and tree visualization
+        row2_elements = []
+
+        # Feature importance
+        fig_imp = create_feature_importance_plot(metadata, top_n=15)
+        if fig_imp:
+            row2_elements.append(
+                dbc.Col(
+                    dcc.Graph(figure=fig_imp, config={"displayModeBar": True}), width=6
+                )
             )
 
-            fig_imp.update_layout(
-                plot_bgcolor="white",
-                xaxis=dict(
-                    showgrid=True,
-                    gridcolor="lightgray",
-                    range=[0, max(feat_imp_df["Importance"]) * 1.1],
-                ),
-                yaxis=dict(categoryorder="total ascending"),
-                showlegend=False,
-            )
-
-            fig_imp.update_traces(
-                hovertemplate="%{y}<br>Importance: %{x:.4f}<extra></extra>"
-            )
-
+        # Tree visualization (for tree-based models)
         feature_names = []
         y_train = None
         if app.state_manager.train_df is not None:
@@ -1143,13 +1070,24 @@ def register_callbacks(app):
         tree_fig = build_tree_figure(
             app.state_manager.current_model, feature_names, max_depth=3, y_train=y_train
         )
-        tree_block = (
-            html.Div([html.H6("Tree Visualization"), dcc.Graph(figure=tree_fig)])
-            if tree_fig is not None
-            else html.Div()
-        )
+        if tree_fig:
+            row2_elements.append(
+                dbc.Col(
+                    html.Div(
+                        [
+                            html.H6("Tree Visualization"),
+                            dcc.Graph(figure=tree_fig, config={"displayModeBar": True}),
+                        ]
+                    ),
+                    width=6,
+                )
+            )
 
-        shap_block = None
+        if row2_elements:
+            visualization_rows.append(dbc.Row(row2_elements, className="mb-4"))
+
+        # Row 3: SHAP analysis (if available)
+        shap_section = None
         if "shap_importance" in metadata:
             shap_imp = metadata["shap_importance"]
             shap_df = (
@@ -1177,90 +1115,24 @@ def register_callbacks(app):
                 plot_bgcolor="white",
                 yaxis=dict(categoryorder="total ascending"),
                 showlegend=False,
-            )
-            fig_shap.update_traces(
-                hovertemplate="%{y}<br>Mean |SHAP|: %{x:.4f}<extra></extra>"
+                height=500,
             )
 
-            shap_block = html.Div([html.H6("SHAP Summary"), dcc.Graph(figure=fig_shap)])
+            shap_section = dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            html.H6("SHAP Analysis"),
+                            dcc.Graph(figure=fig_shap, config={"displayModeBar": True}),
+                        ],
+                        width=12,
+                    )
+                ],
+                className="mb-4",
+            )
 
-            if (
-                "shap_values" in metadata
-                and "shap_feature_values" in metadata
-                and "shap_feature_names" in metadata
-            ):
-                shap_values = np.array(metadata["shap_values"])
-                feature_values = np.array(metadata["shap_feature_values"])
-                feature_names = metadata["shap_feature_names"]
-
-                if shap_values.ndim == 3:
-                    shap_values = shap_values.mean(axis=-1)
-
-                if shap_values.ndim == 1:
-                    shap_values = shap_values.reshape(-1, 1)
-                if feature_values.ndim == 1:
-                    feature_values = feature_values.reshape(-1, 1)
-
-                mean_abs = np.abs(shap_values).mean(axis=0)
-                top_idx = np.argsort(mean_abs)[-10:][::-1]
-
-                beeswarm_rows = []
-                rng = np.random.RandomState(42)
-                for rank, idx in enumerate(top_idx):
-                    shap_col = shap_values[:, idx]
-                    feat_col = feature_values[:, idx]
-                    jitter = rng.uniform(-0.2, 0.2, size=len(shap_col))
-                    for s, v, j in zip(shap_col, feat_col, jitter):
-                        beeswarm_rows.append(
-                            {
-                                "feature": feature_names[idx],
-                                "shap": s,
-                                "value": v,
-                                "y": rank + j,
-                            }
-                        )
-
-                beeswarm_df = pd.DataFrame(beeswarm_rows)
-                fig_beeswarm = px.scatter(
-                    beeswarm_df,
-                    x="shap",
-                    y="feature",
-                    color="value",
-                    title="SHAP Summary (Beeswarm)",
-                    color_continuous_scale="RdBu_r",
-                )
-                fig_beeswarm.update_layout(plot_bgcolor="white", yaxis_title="")
-
-                sample_idx = 0
-                shap_sample = shap_values[sample_idx, :]
-                waterfall_df = pd.DataFrame(
-                    {
-                        "feature": [feature_names[i] for i in top_idx],
-                        "contribution": shap_sample[top_idx],
-                    }
-                ).sort_values("contribution", key=lambda x: np.abs(x), ascending=False)
-
-                fig_waterfall = px.bar(
-                    waterfall_df,
-                    x="contribution",
-                    y="feature",
-                    orientation="h",
-                    title="SHAP Waterfall (Sample 1)",
-                    color="contribution",
-                    color_continuous_scale="RdBu_r",
-                )
-                fig_waterfall.update_layout(plot_bgcolor="white", yaxis_title="")
-
-                shap_block = html.Div(
-                    [
-                        html.H6("SHAP Summary"),
-                        dcc.Graph(figure=fig_beeswarm),
-                        html.Hr(),
-                        dcc.Graph(figure=fig_waterfall),
-                    ]
-                )
-
-        scorecard_block = None
+        # Scorecards section (if available)
+        scorecard_section = None
         if "scorecards" in metadata:
             scorecard_sections = []
             for entry in metadata["scorecards"]:
@@ -1273,8 +1145,7 @@ def register_callbacks(app):
                     [
                         html.H6(f"Scorecard: {entry['feature']}"),
                         html.P(
-                            f"Total IV: {entry['total_iv']:.4f}",
-                            className="text-muted",
+                            f"Total IV: {entry['total_iv']:.4f}", className="text-muted"
                         ),
                         dbc.Table.from_dataframe(
                             scorecard_df,
@@ -1287,48 +1158,78 @@ def register_callbacks(app):
                     ]
                 )
 
-            scorecard_block = html.Div(
+            scorecard_section = dbc.Row(
                 [
-                    html.H6("Binning Scorecards"),
+                    dbc.Col(
+                        [
+                            html.H6("Binning Scorecards"),
+                            html.P(
+                                f"Total IV (sum): {metadata.get('scorecard_total_iv', 0):.4f}",
+                                className="text-muted",
+                            ),
+                            *scorecard_sections,
+                        ],
+                        width=12,
+                    )
+                ],
+                className="mb-4",
+            )
+
+        # Model details panel (collapsible)
+        details_panel = dbc.Row(
+            [dbc.Col(create_model_details_panel(metadata), width=12)], className="mb-4"
+        )
+
+        # Tuning results (if available)
+        tuning_section = None
+        if "best_params" in metadata:
+            best_params = metadata.get("best_params", {})
+            best_score = metadata.get("best_score")
+            params_df = pd.DataFrame(
+                {
+                    "Parameter": list(best_params.keys()),
+                    "Value": [str(v) for v in best_params.values()],
+                }
+            )
+
+            tuning_section = html.Div(
+                [
+                    html.H6("Hyperparameter Tuning Results"),
                     html.P(
-                        f"Total IV (sum): {metadata.get('scorecard_total_iv', 0):.4f}",
+                        f"Best score ({metadata.get('scoring', 'score')}): {best_score:.4f}"
+                        if best_score is not None
+                        else "Best score unavailable",
                         className="text-muted",
                     ),
-                    *scorecard_sections,
+                    dbc.Table.from_dataframe(
+                        params_df, striped=True, bordered=True, hover=True, size="sm"
+                    ),
+                    html.Hr(),
                 ]
             )
 
-        return html.Div(
-            [
-                html.H5(f"Model: {metadata['model_type']}"),
-                html.Hr(),
-                tuning_block if tuning_block else html.Div(),
-                html.H6("Performance Metrics")
-                if metrics_df is not None
-                else html.Div(),
-                dbc.Table.from_dataframe(
-                    metrics_df, striped=True, bordered=True, hover=True
-                )
-                if metrics_df is not None
-                else html.Div(),
-                html.Hr(),
-                dcc.Graph(figure=fig_cm)
-                if fig_cm is not None
-                else (
-                    dcc.Graph(figure=regression_scatter)
-                    if regression_scatter is not None
-                    else html.Div()
-                ),
-                html.Hr(),
-                tree_block,
-                html.Hr(),
-                dcc.Graph(figure=fig_imp) if fig_imp is not None else html.Div(),
-                html.Hr() if scorecard_block is not None else html.Div(),
-                scorecard_block if scorecard_block is not None else html.Div(),
-                html.Hr() if shap_block is not None else html.Div(),
-                shap_block if shap_block is not None else html.Div(),
-            ]
-        )
+        # Assemble final layout
+        layout_elements = [
+            header,
+            action_bar,
+            metrics_cards,
+            html.Hr(),
+        ]
+
+        if tuning_section:
+            layout_elements.extend([tuning_section, html.Hr()])
+
+        layout_elements.extend(visualization_rows)
+
+        if shap_section:
+            layout_elements.append(shap_section)
+
+        if scorecard_section:
+            layout_elements.append(scorecard_section)
+
+        layout_elements.append(details_panel)
+
+        return html.Div(layout_elements, style={"padding": "20px"})
 
     def render_model_comparison_tab():
         """Render model comparison tab."""

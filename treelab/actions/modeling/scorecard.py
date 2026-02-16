@@ -12,6 +12,7 @@ class BinningScorecardAction(Action):
     name = "BinningScorecard"
     description = "Bin a numeric feature and compute WOE/IV scorecard"
     mode = "modeling"
+    category = "Model Explainability"
 
     def get_parameters(self) -> List[Parameter]:
         return [

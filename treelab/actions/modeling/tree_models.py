@@ -32,6 +32,7 @@ class DecisionTreeClassifierAction(Action):
     name = "DecisionTreeClassifier"
     description = "Fit a decision tree for classification"
     mode = "modeling"
+    category = "Classification"
 
     def get_parameters(self) -> List[Parameter]:
         return [
@@ -241,6 +242,7 @@ class RandomForestClassifierAction(Action):
     name = "RandomForestClassifier"
     description = "Fit a random forest ensemble for classification"
     mode = "modeling"
+    category = "Classification"
 
     def get_parameters(self) -> List[Parameter]:
         return [
@@ -436,6 +438,7 @@ class DecisionTreeRegressorAction(Action):
     name = "DecisionTreeRegressor"
     description = "Fit a decision tree for regression"
     mode = "modeling"
+    category = "Regression"
 
     def get_parameters(self) -> List[Parameter]:
         return [
@@ -597,6 +600,7 @@ class RandomForestRegressorAction(Action):
     name = "RandomForestRegressor"
     description = "Fit a random forest ensemble for regression"
     mode = "modeling"
+    category = "Regression"
 
     def get_parameters(self) -> List[Parameter]:
         return [
@@ -761,6 +765,7 @@ class GradientBoostingClassifierAction(Action):
     name = "GradientBoostingClassifier"
     description = "Gradient boosting trees for classification"
     mode = "modeling"
+    category = "Classification"
 
     def get_parameters(self) -> List[Parameter]:
         return [
@@ -928,6 +933,7 @@ class ExtraTreesClassifierAction(Action):
     name = "ExtraTreesClassifier"
     description = "Extra Trees ensemble for classification"
     mode = "modeling"
+    category = "Classification"
 
     def get_parameters(self) -> List[Parameter]:
         return [

@@ -20,6 +20,7 @@ class PCAAction(Action):
     name = "PCA"
     description = "Apply PCA to numeric columns"
     mode = "transformation"
+    category = "Feature Engineering"
 
     def get_parameters(self) -> List[Parameter]:
         return [
@@ -189,6 +190,7 @@ class PolynomialFeaturesAction(Action):
     name = "PolynomialFeatures"
     description = "Expand numeric features with polynomial terms"
     mode = "transformation"
+    category = "Feature Engineering"
 
     def get_parameters(self) -> List[Parameter]:
         return [
@@ -396,6 +398,7 @@ class RFEAction(Action):
     name = "RFE"
     description = "Select top features using RFE"
     mode = "transformation"
+    category = "Feature Engineering"
 
     def get_parameters(self) -> List[Parameter]:
         return [

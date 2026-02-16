@@ -11,6 +11,7 @@ class DropColumnsAction(Action):
     name = "DropColumns"
     description = "Remove specified columns from the dataset"
     mode = "transformation"
+    category = "Data Cleaning"
 
     def get_parameters(self) -> List[Parameter]:
         return [

@@ -54,6 +54,7 @@ class TuneHyperparametersAction(Action):
     name = "TuneHyperparameters"
     description = "Grid search hyperparameters for tree models"
     mode = "modeling"
+    category = "Model Tuning"
 
     def get_parameters(self) -> List[Parameter]:
         return [

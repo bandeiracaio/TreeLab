@@ -18,6 +18,7 @@ class StandardScalerAction(Action):
         "Standardize numeric features to have mean=0 and std=1 (z-score normalization)"
     )
     mode = "transformation"
+    category = "Scaling"
 
     def get_parameters(self) -> List[Parameter]:
         return [
@@ -139,6 +140,7 @@ class MinMaxScalerAction(Action):
     name = "MinMaxScaler"
     description = "Scale numeric features to a [0, 1] range"
     mode = "transformation"
+    category = "Scaling"
 
     def get_parameters(self) -> List[Parameter]:
         return [

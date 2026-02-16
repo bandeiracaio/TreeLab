@@ -12,6 +12,7 @@ class TrainTestSplitAction(Action):
     name = "TrainTestSplit"
     description = "Split DataFrame into training and test sets for model evaluation"
     mode = "transformation"
+    category = "Data Splitting"
 
     def get_parameters(self) -> List[Parameter]:
         return [

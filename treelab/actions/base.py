@@ -25,6 +25,7 @@ class Action(ABC):
     name: str = "BaseAction"
     description: str = "Base action class"
     mode: str = "transformation"  # 'transformation' or 'modeling'
+    category: str = "General"  # Sub-category for organization
 
     @abstractmethod
     def get_parameters(self) -> List[Parameter]:

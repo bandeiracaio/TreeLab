@@ -18,6 +18,7 @@ class OneHotEncoderAction(Action):
         "Convert categorical columns into multiple binary columns (one-hot encoding)"
     )
     mode = "transformation"
+    category = "Encoding"
 
     def get_parameters(self) -> List[Parameter]:
         return [
@@ -177,6 +178,7 @@ class LabelEncoderAction(Action):
     name = "LabelEncoder"
     description = "Encode categorical columns as integer labels (ordinal encoding)"
     mode = "transformation"
+    category = "Encoding"
 
     def get_parameters(self) -> List[Parameter]:
         return [

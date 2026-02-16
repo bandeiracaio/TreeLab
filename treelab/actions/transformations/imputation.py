@@ -14,6 +14,7 @@ class SimpleImputerAction(Action):
     name = "SimpleImputer"
     description = "Fill missing values using mean, median, mode, or a constant value"
     mode = "transformation"
+    category = "Data Cleaning"
 
     def get_parameters(self) -> List[Parameter]:
         return [

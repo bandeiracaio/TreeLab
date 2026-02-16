@@ -27,6 +27,7 @@ class SHAPSummaryAction(Action):
     name = "SHAPSummary"
     description = "Compute SHAP feature importance using a random forest"
     mode = "modeling"
+    category = "Model Explainability"
 
     def get_parameters(self) -> List[Parameter]:
         return [
