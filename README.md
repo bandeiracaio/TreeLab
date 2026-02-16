@@ -38,6 +38,32 @@ app.run()
 
 Then open your browser to http://localhost:8050
 
+## Running on JupyterLab/JupyterHub
+
+### Local JupyterLab
+
+```python
+from treelab import TreeLab
+
+app = TreeLab()
+app.run(host='127.0.0.1', port=8050)
+```
+
+Access at http://127.0.0.1:8050
+
+### JupyterHub
+
+```python
+from treelab import TreeLab
+
+app = TreeLab()
+app.run(host='0.0.0.0', port=8050)
+```
+
+Access at `{your_jupyterhub_url}/proxy/8050`
+
+For detailed instructions, see [JUPYTERHUB_GUIDE.md](./JUPYTERHUB_GUIDE.md).
+
 ## Workflow
 
 1. **Transformation Mode**: Apply preprocessing actions
