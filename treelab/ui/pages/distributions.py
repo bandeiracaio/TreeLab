@@ -271,11 +271,11 @@ class DistributionsPage:
 
             fig = go.Figure()
 
-            # Add histogram trace for each quartile
+            # Add histogram trace for each quartile with value ranges
             fig.add_trace(
                 go.Histogram(
                     x=q1_data,
-                    name="Q1 (≤25%)",
+                    name=f"Q1 ({q1_data.min():.1f} - {q1_data.max():.1f})",
                     marker_color="#2196f3",  # Blue
                     opacity=0.8,
                     nbinsx=30,
@@ -284,7 +284,7 @@ class DistributionsPage:
             fig.add_trace(
                 go.Histogram(
                     x=q2_data,
-                    name="Q2 (25-50%)",
+                    name=f"Q2 ({q2_data.min():.1f} - {q2_data.max():.1f})",
                     marker_color="#4caf50",  # Green
                     opacity=0.8,
                     nbinsx=30,
@@ -293,7 +293,7 @@ class DistributionsPage:
             fig.add_trace(
                 go.Histogram(
                     x=q3_data,
-                    name="Q3 (50-75%)",
+                    name=f"Q3 ({q3_data.min():.1f} - {q3_data.max():.1f})",
                     marker_color="#ff9800",  # Orange
                     opacity=0.8,
                     nbinsx=30,
@@ -302,7 +302,7 @@ class DistributionsPage:
             fig.add_trace(
                 go.Histogram(
                     x=q4_data,
-                    name="Q4 (>75%)",
+                    name=f"Q4 ({q4_data.min():.1f} - {q4_data.max():.1f})",
                     marker_color="#f44336",  # Red
                     opacity=0.8,
                     nbinsx=30,
@@ -371,10 +371,13 @@ class DistributionsPage:
                     data = series[(series > prev_bound) & (series <= bound)]
 
                 if len(data) > 0:
+                    # Calculate actual min and max for this decile
+                    decile_min = data.min()
+                    decile_max = data.max()
                     fig.add_trace(
                         go.Histogram(
                             x=data,
-                            name=f"D{i + 1} ({(i) * 10}-{(i + 1) * 10}%)",
+                            name=f"D{i + 1} ({decile_min:.1f} - {decile_max:.1f})",
                             marker_color=color,
                             opacity=0.9,
                             nbinsx=30,
