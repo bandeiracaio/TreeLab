@@ -23,6 +23,7 @@ from treelab.ui.model_results import (
     create_action_bar,
 )
 from treelab.ui.pages.statistics import StatisticsPage
+from treelab.ui.pages.distributions import DistributionsPage
 
 
 def register_callbacks(app):
@@ -676,144 +677,10 @@ def register_callbacks(app):
         return stats_page.render()
 
     def render_distributions_tab():
-        """Render distributions tab with subplots for all numeric columns."""
+        """Render enhanced distributions tab."""
         df = app.state_manager.df
-        numeric_cols = ColumnAnalyzer.get_numeric_columns(df)
-
-        if not numeric_cols:
-            return html.Div("No numeric columns to visualize")
-
-        return html.Div(
-            [
-                html.P(
-                    f"Showing distributions for {len(numeric_cols)} numeric columns",
-                    className="text-muted small mb-3",
-                ),
-                dcc.Dropdown(
-                    id="dist-columns-selector",
-                    options=[{"label": col, "value": col} for col in numeric_cols],
-                    value=numeric_cols,
-                    multi=True,
-                    placeholder="Select columns to show...",
-                ),
-                html.Br(),
-                dcc.Graph(id="dist-graph"),
-            ]
-        )
-
-    @app.callback(
-        Output("dist-graph", "figure"),
-        [
-            Input("dist-columns-selector", "value"),
-            Input("refresh-trigger", "data"),
-        ],
-    )
-    def update_distributions(selected_columns, trigger):
-        """Update distribution plots based on selected columns."""
-        df = app.state_manager.df
-        numeric_cols = ColumnAnalyzer.get_numeric_columns(df)
-
-        if not numeric_cols:
-            fig = go.Figure()
-            fig.add_annotation(text="No numeric columns available", showarrow=False)
-            fig.update_layout(plot_bgcolor="white")
-            return fig
-
-        if not selected_columns:
-            selected = numeric_cols
-        else:
-            selected = (
-                selected_columns
-                if isinstance(selected_columns, list)
-                else [selected_columns]
-            )
-            selected = [col for col in selected if col in numeric_cols]
-
-        if not selected:
-            fig = go.Figure()
-            fig.add_annotation(text="No numeric columns selected", showarrow=False)
-            fig.update_layout(plot_bgcolor="white")
-            return fig
-
-        ncols = min(3, len(selected))
-        nrows = (len(selected) + ncols - 1) // ncols
-
-        from plotly.subplots import make_subplots
-
-        vertical_spacing = 0.15 if nrows <= 1 else min(0.12, 1 / (nrows - 1))
-
-        fig = make_subplots(
-            rows=nrows,
-            cols=ncols,
-            subplot_titles=[
-                f"{col}<br><sub style='font-size:10px'>Mean: {df[col].mean():.2f} | Med: {df[col].median():.2f}<br>Std: {df[col].std():.2f} | Missing: {df[col].isna().sum()}</sub>"
-                for col in selected
-            ],
-            vertical_spacing=vertical_spacing,
-            horizontal_spacing=0.1,
-        )
-
-        for idx, col in enumerate(selected):
-            row = idx // ncols + 1
-            col_idx = idx % ncols + 1
-
-            fig.add_trace(
-                go.Histogram(
-                    x=df[col].dropna(),
-                    nbinsx=30,
-                    name=col,
-                    showlegend=False,
-                    hovertemplate="%{x}<br>Count: %{y}<extra></extra>",
-                ),
-                row=row,
-                col=col_idx,
-            )
-
-            mean_val = df[col].mean()
-            median_val = df[col].median()
-
-            fig.add_vline(
-                x=mean_val,
-                line_dash="dash",
-                line_color="red",
-                line_width=1,
-                row=row,
-                col=col_idx,
-            )
-
-            fig.add_vline(
-                x=median_val,
-                line_dash="dot",
-                line_color="green",
-                line_width=1,
-                row=row,
-                col=col_idx,
-            )
-
-        fig.update_layout(
-            showlegend=False,
-            hovermode="closest",
-            height=nrows * 300,
-            plot_bgcolor="white",
-        )
-
-        for i in range(1, len(selected) + 1):
-            row = (i - 1) // ncols + 1
-            col_idx = (i - 1) % ncols + 1
-            fig.update_xaxes(
-                showgrid=True,
-                gridcolor="lightgray",
-                row=row,
-                col=col_idx,
-            )
-            fig.update_yaxes(
-                showgrid=True,
-                gridcolor="lightgray",
-                row=row,
-                col=col_idx,
-            )
-
-        return fig
+        dist_page = DistributionsPage(df)
+        return dist_page.render()
 
     def render_correlations_tab():
         """Render correlations tab with multiple correlation methods."""
@@ -2077,3 +1944,28 @@ def register_callbacks(app):
             ],
             style={"padding": "20px"},
         )
+
+    # Distributions page callbacks
+    @app.callback(
+        [Output("dist-main-plot", "figure"), Output("dist-stats-panel", "children")],
+        [
+            Input("dist-feature-selector", "value"),
+            Input("dist-chart-type", "value"),
+        ],
+    )
+    def update_distribution_plot(selected_feature, chart_type):
+        """Update distribution plot and statistics panel."""
+        df = app.state_manager.df
+
+        if not selected_feature or selected_feature not in df.columns:
+            return go.Figure(), html.Div("Select a feature")
+
+        dist_page = DistributionsPage(df)
+
+        # Create plot
+        fig = dist_page.create_distribution_plot(selected_feature, chart_type)
+
+        # Create stats panel
+        stats_panel = dist_page.create_statistics_panel(selected_feature)
+
+        return fig, stats_panel
